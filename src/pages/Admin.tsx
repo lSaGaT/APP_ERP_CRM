@@ -15,10 +15,12 @@ import {
   Lock,
   CheckCircle2,
   XCircle,
-  Save
+  Save,
+  Ban,
+  CalendarX
 } from 'lucide-react';
 import { supabaseService } from '../services/supabaseService';
-import { Profile, Servico, Funcionario } from '../types/database';
+import { Profile, Servico, Funcionario, BloqueioAgenda } from '../types/database';
 import { cn, formatCurrency } from '../lib/utils';
 
 const TabButton = ({ active, onClick, icon: Icon, label }: any) => (
@@ -113,45 +115,167 @@ const DIAS_SEMANA = [
 
 export default function Admin() {
   const [activeTab, setActiveTab] = useState('usuarios');
-  const [loading, setLoading] = useState(true);
+
+  // Estados de dados
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [servicos, setServicos] = useState<Servico[]>([]);
   const [funcionarios, setFuncionarios] = useState<Funcionario[]>([]);
+  const [bloqueios, setBloqueios] = useState<any[]>([]);
+
+  // Estados de loading individuais por aba
+  const [loadingUsuarios, setLoadingUsuarios] = useState(false);
+  const [loadingServicos, setLoadingServicos] = useState(false);
+  const [loadingFuncionarios, setLoadingFuncionarios] = useState(false);
+  const [loadingJornada, setLoadingJornada] = useState(false);
+  const [loadingBloqueios, setLoadingBloqueios] = useState(false);
+
+  // Controle de quais abas já foram carregadas (lazy loading)
+  const [loadedTabs, setLoadedTabs] = useState({
+    usuarios: false,
+    servicos: false,
+    funcionarios: false,
+    jornada: false,
+    bloqueios: false
+  });
 
   // Modals state
   const [showUserModal, setShowUserModal] = useState(false);
   const [showServicoModal, setShowServicoModal] = useState(false);
   const [showFuncionarioModal, setShowFuncionarioModal] = useState(false);
   const [showJornadaModal, setShowJornadaModal] = useState(false);
+  const [showBloqueioModal, setShowBloqueioModal] = useState(false);
   const [editingServico, setEditingServico] = useState<Servico | null>(null);
   const [editingFuncionario, setEditingFuncionario] = useState<Funcionario | null>(null);
 
   // Form states
   const [userForm, setUserForm] = useState({ email: '', password: '', fullName: '', role: 'atendente' });
-  const [servicoForm, setServicoForm] = useState({ nome: '', preco: '', duracao: '' });
+  const [servicoForm, setServicoForm] = useState({
+    nome: '',
+    preco: '',
+    duracao: '',
+    tempoAplicacao: '',
+    tempoEspera: '',
+    tempoFinalizacao: ''
+  });
   const [funcionarioForm, setFuncionarioForm] = useState({ nome: '', especialidade: '', cor: '#3b82f6', aceitaEncaixe: true });
+  const [bloqueioForm, setBloqueioForm] = useState({
+    funcionarioId: '',
+    dataInicio: '',
+    dataFim: '',
+    horaInicio: '',
+    horaFim: '',
+    motivo: '',
+    recorrente: false,
+    recorrenciaTipo: ''
+  });
 
+  // Carrega dados da aba quando ela é ativada (lazy loading)
   useEffect(() => {
-    fetchData();
-  }, []);
+    const loadTabData = async () => {
+      // Se já carregou essa aba antes e não precisa recarregar, skip
+      if (loadedTabs[activeTab as keyof typeof loadedTabs]) return;
 
-  const fetchData = async () => {
-    setLoading(true);
+      switch (activeTab) {
+        case 'usuarios':
+          await loadUsuarios();
+          break;
+        case 'servicos':
+          await loadServicos();
+          break;
+        case 'funcionarios':
+        case 'jornada':
+          await loadFuncionarios();
+          break;
+        case 'bloqueios':
+          await Promise.all([loadFuncionarios(), loadBloqueios()]);
+          break;
+      }
+
+      setLoadedTabs(prev => ({ ...prev, [activeTab]: true }));
+    };
+
+    loadTabData();
+  }, [activeTab]);
+
+  // Funções de carregamento individuais
+  const loadUsuarios = async () => {
+    setLoadingUsuarios(true);
     try {
-      const [pData, sData, fData] = await Promise.all([
-        supabaseService.getProfiles(),
-        supabaseService.getServicos(),
-        supabaseService.getFuncionarios()
-      ]);
-      setProfiles(pData);
-      setServicos(sData);
-      setFuncionarios(fData);
+      const data = await supabaseService.getProfiles();
+      setProfiles(data);
     } catch (error) {
-      console.error('Error fetching admin data:', error);
+      console.error('Erro ao carregar usuários:', error);
     } finally {
-      setLoading(false);
+      setLoadingUsuarios(false);
     }
   };
+
+  const loadServicos = async () => {
+    setLoadingServicos(true);
+    try {
+      const data = await supabaseService.getServicos();
+      setServicos(data);
+    } catch (error) {
+      console.error('Erro ao carregar serviços:', error);
+    } finally {
+      setLoadingServicos(false);
+    }
+  };
+
+  const loadFuncionarios = async () => {
+    setLoadingFuncionarios(true);
+    try {
+      const data = await supabaseService.getFuncionarios();
+      setFuncionarios(data);
+    } catch (error) {
+      console.error('Erro ao carregar funcionários:', error);
+    } finally {
+      setLoadingFuncionarios(false);
+    }
+  };
+
+  const loadBloqueios = async () => {
+    setLoadingBloqueios(true);
+    try {
+      const data = await supabaseService.getBloqueios();
+      setBloqueios(data || []);
+    } catch (error) {
+      console.error('Erro ao carregar bloqueios:', error);
+    } finally {
+      setLoadingBloqueios(false);
+    }
+  };
+
+  // Recarrega dados específicos após CRUD (não recarrega tudo)
+  const refreshData = (type: 'usuarios' | 'servicos' | 'funcionarios' | 'bloqueios' | 'all') => {
+    switch (type) {
+      case 'usuarios':
+        loadUsuarios();
+        break;
+      case 'servicos':
+        loadServicos();
+        break;
+      case 'funcionarios':
+      case 'jornada':
+        loadFuncionarios();
+        break;
+      case 'bloqueios':
+        loadBloqueios();
+        break;
+      case 'all':
+        setLoadedTabs({
+          usuarios: false,
+          servicos: false,
+          funcionarios: false,
+          jornada: false,
+          bloqueios: false
+        });
+        break;
+    }
+  };
+
+  // Substituir todas as chamadas de fetchData() por refreshData()
+  const fetchData = () => refreshData('all');
 
   // Handlers
   const handleCreateUser = async (e: React.FormEvent) => {
@@ -165,7 +289,7 @@ export default function Admin() {
       );
       setShowUserModal(false);
       setUserForm({ email: '', password: '', fullName: '', role: 'atendente' });
-      fetchData();
+      refreshData('usuarios');
       alert('Usuário criado com sucesso!');
     } catch (error: any) {
       alert('Erro ao criar usuário: ' + error.message);
@@ -174,25 +298,51 @@ export default function Admin() {
 
   const handleCreateServico = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Validar soma dos tempos
+    const tempoAplicacao = parseInt(servicoForm.tempoAplicacao) || 0;
+    const tempoEspera = parseInt(servicoForm.tempoEspera) || 0;
+    const tempoFinalizacao = parseInt(servicoForm.tempoFinalizacao) || 0;
+    const duracaoTotal = parseInt(servicoForm.duracao);
+
+    const somaTempos = tempoAplicacao + tempoEspera + tempoFinalizacao;
+    if (somaTempos > duracaoTotal) {
+      alert(`A soma dos tempos (${somaTempos} min) não pode ultrapassar a duração total (${duracaoTotal} min). Diferença: ${somaTempos - duracaoTotal} min`);
+      return;
+    }
+
     try {
       if (editingServico) {
         await supabaseService.updateServico(
           editingServico.id,
           servicoForm.nome,
           parseFloat(servicoForm.preco),
-          parseInt(servicoForm.duracao)
+          duracaoTotal,
+          tempoAplicacao || null,
+          tempoEspera || null,
+          tempoFinalizacao || null
         );
       } else {
         await supabaseService.createServico(
           servicoForm.nome,
           parseFloat(servicoForm.preco),
-          parseInt(servicoForm.duracao)
+          duracaoTotal,
+          tempoAplicacao || null,
+          tempoEspera || null,
+          tempoFinalizacao || null
         );
       }
       setShowServicoModal(false);
-      setServicoForm({ nome: '', preco: '', duracao: '' });
+      setServicoForm({
+        nome: '',
+        preco: '',
+        duracao: '',
+        tempoAplicacao: '',
+        tempoEspera: '',
+        tempoFinalizacao: ''
+      });
       setEditingServico(null);
-      fetchData();
+      refreshData('servicos');
     } catch (error: any) {
       alert('Erro ao salvar serviço: ' + error.message);
     }
@@ -202,7 +352,7 @@ export default function Admin() {
     if (!confirm('Tem certeza que deseja excluir este serviço?')) return;
     try {
       await supabaseService.deleteServico(id);
-      fetchData();
+      refreshData('servicos');
     } catch (error: any) {
       alert('Erro ao excluir serviço: ' + error.message);
     }
@@ -230,7 +380,7 @@ export default function Admin() {
       setShowFuncionarioModal(false);
       setFuncionarioForm({ nome: '', especialidade: '', cor: '#3b82f6', aceitaEncaixe: true });
       setEditingFuncionario(null);
-      fetchData();
+      refreshData('funcionarios');
     } catch (error: any) {
       alert('Erro ao salvar funcionário: ' + error.message);
     }
@@ -240,15 +390,62 @@ export default function Admin() {
     if (!confirm('Tem certeza que deseja excluir este funcionário?')) return;
     try {
       await supabaseService.deleteFuncionario(id);
-      fetchData();
+      refreshData('funcionarios');
     } catch (error: any) {
       alert('Erro ao excluir funcionário: ' + error.message);
     }
   };
 
+  const handleCreateBloqueio = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await supabaseService.createBloqueio(
+        bloqueioForm.funcionarioId || null,
+        bloqueioForm.dataInicio,
+        bloqueioForm.dataFim,
+        bloqueioForm.horaInicio || null,
+        bloqueioForm.horaFim || null,
+        bloqueioForm.motivo || null,
+        bloqueioForm.recorrente,
+        bloqueioForm.recorrenteTipo || null
+      );
+      setShowBloqueioModal(false);
+      setBloqueioForm({
+        funcionarioId: '',
+        dataInicio: '',
+        dataFim: '',
+        horaInicio: '',
+        horaFim: '',
+        motivo: '',
+        recorrente: false,
+        recorrenciaTipo: ''
+      });
+      refreshData('bloqueios');
+    } catch (error: any) {
+      alert('Erro ao criar bloqueio: ' + error.message);
+    }
+  };
+
+  const handleDeleteBloqueio = async (id: string) => {
+    if (!confirm('Tem certeza que deseja excluir este bloqueio?')) return;
+    try {
+      await supabaseService.deleteBloqueio(id);
+      refreshData('bloqueios');
+    } catch (error: any) {
+      alert('Erro ao excluir bloqueio: ' + error.message);
+    }
+  };
+
   const openEditServico = (servico: Servico) => {
     setEditingServico(servico);
-    setServicoForm({ nome: servico.nome, preco: servico.preco.toString(), duracao: servico.duracao_total_minutos.toString() });
+    setServicoForm({
+      nome: servico.nome,
+      preco: servico.preco.toString(),
+      duracao: servico.duracao_total_minutos.toString(),
+      tempoAplicacao: servico.tempo_aplicacao_minutos?.toString() || '',
+      tempoEspera: servico.tempo_espera_minutos?.toString() || '',
+      tempoFinalizacao: servico.tempo_finalizacao_minutos?.toString() || ''
+    });
     setShowServicoModal(true);
   };
 
@@ -270,21 +467,32 @@ export default function Admin() {
         <TabButton active={activeTab === 'servicos'} onClick={() => setActiveTab('servicos')} icon={Scissors} label="Serviços" />
         <TabButton active={activeTab === 'funcionarios'} onClick={() => setActiveTab('funcionarios')} icon={Shield} label="Funcionários" />
         <TabButton active={activeTab === 'jornada'} onClick={() => setActiveTab('jornada')} icon={Clock} label="Jornada" />
+        <TabButton active={activeTab === 'bloqueios'} onClick={() => setActiveTab('bloqueios')} icon={CalendarX} label="Bloqueios" />
       </div>
 
       <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
         {activeTab === 'usuarios' && (
           <div className="p-8 space-y-6">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xl font-bold text-slate-900">Gerenciar Acessos</h3>
-              <button
-                onClick={() => setShowUserModal(true)}
-                className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-blue-700 transition-colors"
-              >
-                <UserPlus size={18} />
-                Novo Usuário
-              </button>
-            </div>
+            {loadingUsuarios ? (
+              <div className="flex items-center justify-center py-20">
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                  className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full"
+                />
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xl font-bold text-slate-900">Gerenciar Acessos</h3>
+                  <button
+                    onClick={() => setShowUserModal(true)}
+                    className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-blue-700 transition-colors"
+                  >
+                    <UserPlus size={18} />
+                    Novo Usuário
+                  </button>
+                </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {profiles?.map((profile, idx) => (
                 <div key={profile.id || `profile-${idx}`} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
@@ -306,21 +514,33 @@ export default function Admin() {
                 </div>
               ))}
             </div>
+              </>
+            )}
           </div>
         )}
 
         {activeTab === 'servicos' && (
           <div className="p-8 space-y-6">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xl font-bold text-slate-900">Catálogo de Serviços</h3>
-              <button
-                onClick={() => { setEditingServico(null); setServicoForm({ nome: '', preco: '', duracao: '' }); setShowServicoModal(true); }}
-                className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-blue-700 transition-colors"
-              >
-                <Plus size={18} />
-                Novo Serviço
-              </button>
-            </div>
+            {loadingServicos ? (
+              <div className="flex items-center justify-center py-20">
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                  className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full"
+                />
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xl font-bold text-slate-900">Catálogo de Serviços</h3>
+                  <button
+                    onClick={() => { setEditingServico(null); setServicoForm({ nome: '', preco: '', duracao: '', tempoAplicacao: '', tempoEspera: '', tempoFinalizacao: '' }); setShowServicoModal(true); }}
+                    className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-blue-700 transition-colors"
+                  >
+                    <Plus size={18} />
+                    Novo Serviço
+                  </button>
+                </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left">
                 <thead>
@@ -348,21 +568,33 @@ export default function Admin() {
                 </tbody>
               </table>
             </div>
+              </>
+            )}
           </div>
         )}
 
         {activeTab === 'funcionarios' && (
           <div className="p-8 space-y-6">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xl font-bold text-slate-900">Equipe de Profissionais</h3>
-              <button
-                onClick={() => { setEditingFuncionario(null); setFuncionarioForm({ nome: '', especialidade: '', cor: '#3b82f6', aceitaEncaixe: true }); setShowFuncionarioModal(true); }}
-                className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-blue-700 transition-colors"
-              >
-                <Plus size={18} />
-                Novo Funcionário
-              </button>
-            </div>
+            {loadingFuncionarios ? (
+              <div className="flex items-center justify-center py-20">
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                  className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full"
+                />
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xl font-bold text-slate-900">Equipe de Profissionais</h3>
+                  <button
+                    onClick={() => { setEditingFuncionario(null); setFuncionarioForm({ nome: '', especialidade: '', cor: '#3b82f6', aceitaEncaixe: true }); setShowFuncionarioModal(true); }}
+                    className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-blue-700 transition-colors"
+                  >
+                    <Plus size={18} />
+                    Novo Funcionário
+                  </button>
+                </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {funcionarios?.map((func, idx) => (
                 <div key={func.id || `func-${idx}`} className="p-6 bg-slate-50 rounded-3xl border border-slate-100 relative overflow-hidden group">
@@ -389,17 +621,29 @@ export default function Admin() {
                 </div>
               ))}
             </div>
+              </>
+            )}
           </div>
         )}
 
         {activeTab === 'jornada' && (
           <div className="p-8 space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-xl font-bold text-slate-900">Configuração de Jornada</h3>
-                <p className="text-slate-500 mt-1">Defina os horários de trabalho de cada profissional por dia da semana.</p>
+            {loadingJornada ? (
+              <div className="flex items-center justify-center py-20">
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                  className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full"
+                />
               </div>
-            </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-xl font-bold text-slate-900">Configuração de Jornada</h3>
+                    <p className="text-slate-500 mt-1">Defina os horários de trabalho de cada profissional por dia da semana.</p>
+                  </div>
+                </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {funcionarios?.filter(f => f.ativo).map((func) => (
                 <div key={func.id} className="p-6 bg-slate-50 rounded-2xl border border-slate-100">
@@ -426,6 +670,111 @@ export default function Admin() {
                 </div>
               ))}
             </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'bloqueios' && (
+          <div className="p-8 space-y-6">
+            {loadingBloqueios ? (
+              <div className="flex items-center justify-center py-20">
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                  className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full"
+                />
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-xl font-bold text-slate-900">Bloqueios de Agenda</h3>
+                    <p className="text-slate-500 mt-1">Gerencie ausências, férias e dias não trabalhados.</p>
+                  </div>
+                  <button
+                    onClick={() => setShowBloqueioModal(true)}
+                    className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-blue-700 transition-colors"
+                  >
+                    <Plus size={18} />
+                    Novo Bloqueio
+                  </button>
+                </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="text-slate-400 text-xs uppercase tracking-widest font-bold border-b border-slate-100">
+                    <th className="pb-4">Profissional</th>
+                    <th className="pb-4">Período</th>
+                    <th className="pb-4">Horário</th>
+                    <th className="pb-4">Motivo</th>
+                    <th className="pb-4">Recorrente</th>
+                    <th className="pb-4 text-right">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {bloqueios?.length > 0 ? bloqueios.map((bloqueio) => (
+                    <tr key={bloqueio.id} className="group hover:bg-slate-50 transition-colors">
+                      <td className="py-4">
+                        <div className="flex items-center gap-3">
+                          {bloqueio.funcionarios ? (
+                            <>
+                              <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm font-bold" style={{ backgroundColor: bloqueio.funcionarios.cor_agenda }}>
+                                {bloqueio.funcionarios.nome?.charAt(0)}
+                              </div>
+                              <span className="font-medium text-slate-900">{bloqueio.funcionarios.nome}</span>
+                            </>
+                          ) : (
+                            <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-xs font-bold">Todos</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-4 text-sm text-slate-600">
+                        {new Date(bloqueio.data_inicio).toLocaleDateString('pt-BR')}
+                        {bloqueio.data_inicio !== bloqueio.data_fim && (
+                          <> até {new Date(bloqueio.data_fim).toLocaleDateString('pt-BR')}</>
+                        )}
+                      </td>
+                      <td className="py-4 text-sm text-slate-600">
+                        {bloqueio.hora_inicio ? (
+                          <>{bloqueio.hora_inicio?.substring(0, 5)} - {bloqueio.hora_fim?.substring(0, 5)}</>
+                        ) : (
+                          <span className="text-slate-400">Dia todo</span>
+                        )}
+                      </td>
+                      <td className="py-4 text-sm text-slate-600">{bloqueio.motivo || '-'}</td>
+                      <td className="py-4">
+                        {bloqueio.recorrente ? (
+                          <span className="px-2 py-1 bg-purple-100 text-purple-600 rounded-full text-xs font-bold">
+                            {bloqueio.recorrencia_tipo || 'Recorrente'}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">-</span>
+                        )}
+                      </td>
+                      <td className="py-4 text-right">
+                        <button
+                          onClick={() => handleDeleteBloqueio(bloqueio.id)}
+                          className="p-2 text-slate-400 hover:text-red-600 rounded-lg transition-colors"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </td>
+                    </tr>
+                  )) : (
+                    <tr>
+                      <td colSpan={6} className="py-12 text-center text-slate-400">
+                        <CalendarX size={48} className="mx-auto mb-4 opacity-50" />
+                        <p>Nenhum bloqueio cadastrado</p>
+                        <p className="text-sm mt-1">Clique em "Novo Bloqueio" para adicionar.</p>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -472,7 +821,7 @@ export default function Admin() {
       </Modal>
 
       {/* Modal Novo Serviço */}
-      <Modal isOpen={showServicoModal} onClose={() => { setShowServicoModal(false); setEditingServico(null); setServicoForm({ nome: '', preco: '', duracao: '' }); }} title={editingServico ? 'Editar Serviço' : 'Novo Serviço'}>
+      <Modal isOpen={showServicoModal} onClose={() => { setShowServicoModal(false); setEditingServico(null); setServicoForm({ nome: '', preco: '', duracao: '', tempoAplicacao: '', tempoEspera: '', tempoFinalizacao: '' }); }} title={editingServico ? 'Editar Serviço' : 'Novo Serviço'}>
         <form onSubmit={handleCreateServico} className="space-y-4">
           <InputField
             label="Nome do Serviço"
@@ -491,13 +840,72 @@ export default function Admin() {
             required
           />
           <InputField
-            label="Duração (minutos)"
+            label="Duração Total (minutos)"
             type="number"
             value={servicoForm.duracao}
             onChange={(e: any) => setServicoForm({ ...servicoForm, duracao: e.target.value })}
             placeholder="30"
             required
           />
+
+          <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
+            <p className="text-sm font-bold text-blue-800 mb-3">💡 Distribuição do Tempo (opcional)</p>
+            <p className="text-xs text-blue-600 mb-4">A soma dos tempos abaixo não pode ultrapassar a duração total.</p>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  ⚱️ Tempo de Aplicação (funcionário ocupado)
+                </label>
+                <input
+                  type="number"
+                  value={servicoForm.tempoAplicacao}
+                  onChange={(e: any) => setServicoForm({ ...servicoForm, tempoAplicacao: e.target.value })}
+                  placeholder="Ex: 30"
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  ⏰ Tempo de Espera (cliente ocioso - ENCAIXES aqui)
+                </label>
+                <input
+                  type="number"
+                  value={servicoForm.tempoEspera}
+                  onChange={(e: any) => setServicoForm({ ...servicoForm, tempoEspera: e.target.value })}
+                  placeholder="Ex: 20 (máscara, tintura...)"
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  ✨ Tempo de Finalização (funcionário ocupado)
+                </label>
+                <input
+                  type="number"
+                  value={servicoForm.tempoFinalizacao}
+                  onChange={(e: any) => setServicoForm({ ...servicoForm, tempoFinalizacao: e.target.value })}
+                  placeholder="Ex: 10 (lavagem, limpeza...)"
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                />
+              </div>
+
+              {/* Indicador visual da soma */}
+              {(servicoForm.tempoAplicacao || servicoForm.tempoEspera || servicoForm.tempoFinalizacao) && (
+                <div className={cn(
+                  "pt-3 border-t text-sm",
+                  (parseInt(servicoForm.tempoAplicacao || 0) + parseInt(servicoForm.tempoEspera || 0) + parseInt(servicoForm.tempoFinalizacao || 0)) > parseInt(servicoForm.duracao || 999)
+                    ? "text-red-600" : "text-slate-600"
+                )}>
+                  Soma: <strong>{(parseInt(servicoForm.tempoAplicacao || 0) + parseInt(servicoForm.tempoEspera || 0) + parseInt(servicoForm.tempoFinalizacao || 0))}</strong> min
+                  {servicoForm.duracao && <> / {servicoForm.duracao} min total</>}
+                </div>
+              )}
+            </div>
+          </div>
+
           <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-200 transition-all">
             {editingServico ? 'Salvar Alterações' : 'Adicionar Serviço'}
           </button>
@@ -546,6 +954,126 @@ export default function Admin() {
           </div>
           <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-200 transition-all">
             {editingFuncionario ? 'Salvar Alterações' : 'Adicionar Funcionário'}
+          </button>
+        </form>
+      </Modal>
+
+      {/* Modal Novo Bloqueio */}
+      <Modal
+        isOpen={showBloqueioModal}
+        onClose={() => {
+          setShowBloqueioModal(false);
+          setBloqueioForm({
+            funcionarioId: '',
+            dataInicio: '',
+            dataFim: '',
+            horaInicio: '',
+            horaFim: '',
+            motivo: '',
+            recorrente: false,
+            recorrenciaTipo: ''
+          });
+        }}
+        title="Novo Bloqueio"
+      >
+        <form onSubmit={handleCreateBloqueio} className="space-y-4">
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">Profissional</label>
+            <select
+              value={bloqueioForm.funcionarioId}
+              onChange={(e: any) => setBloqueioForm({ ...bloqueioForm, funcionarioId: e.target.value })}
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none"
+            >
+              <option value="">Todos os funcionários</option>
+              {funcionarios?.filter(f => f.ativo).map(f => (
+                <option key={f.id} value={f.id}>{f.nome}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Data Início</label>
+              <input
+                type="date"
+                value={bloqueioForm.dataInicio}
+                onChange={(e: any) => setBloqueioForm({ ...bloqueioForm, dataInicio: e.target.value })}
+                required
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Data Fim</label>
+              <input
+                type="date"
+                value={bloqueioForm.dataFim}
+                onChange={(e: any) => setBloqueioForm({ ...bloqueioForm, dataFim: e.target.value })}
+                required
+                min={bloqueioForm.dataInicio}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Hora Início (opcional)</label>
+              <input
+                type="time"
+                value={bloqueioForm.horaInicio}
+                onChange={(e: any) => setBloqueioForm({ ...bloqueioForm, horaInicio: e.target.value })}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Hora Fim (opcional)</label>
+              <input
+                type="time"
+                value={bloqueioForm.horaFim}
+                onChange={(e: any) => setBloqueioForm({ ...bloqueioForm, horaFim: e.target.value })}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">Motivo</label>
+            <input
+              type="text"
+              value={bloqueioForm.motivo}
+              onChange={(e: any) => setBloqueioForm({ ...bloqueioForm, motivo: e.target.value })}
+              placeholder="Ex: Férias, Feriado, Licença médica..."
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none"
+            />
+          </div>
+
+          <div className="p-4 bg-amber-50 rounded-xl border border-amber-100">
+            <div className="flex items-center gap-3 mb-3">
+              <input
+                type="checkbox"
+                id="recorrente"
+                checked={bloqueioForm.recorrente}
+                onChange={(e: any) => setBloqueioForm({ ...bloqueioForm, recorrente: e.target.checked })}
+                className="w-5 h-5 rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+              />
+              <label htmlFor="recorrente" className="text-sm font-bold text-amber-800">Bloqueio Recorrente</label>
+            </div>
+            {bloqueioForm.recorrente && (
+              <select
+                value={bloqueioForm.recorrenciaTipo}
+                onChange={(e: any) => setBloqueioForm({ ...bloqueioForm, recorrenciaTipo: e.target.value })}
+                className="w-full px-4 py-2 bg-white border border-amber-200 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none"
+              >
+                <option value="">Selecione o tipo</option>
+                <option value="semanal">Semanal</option>
+                <option value="mensal">Mensal</option>
+                <option value="anual">Anual</option>
+              </select>
+            )}
+          </div>
+
+          <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-200 transition-all">
+            Criar Bloqueio
           </button>
         </form>
       </Modal>

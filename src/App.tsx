@@ -60,43 +60,64 @@ const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let mounted = true;
+
     // Check active sessions and subscribe to auth changes
     const checkUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', session.user.id)
-          .single();
-        
-        if (profile) {
-          setUser(profile as Profile);
+      try {
+        const { data: { session } } = await Promise.race([
+          supabase.auth.getSession(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Auth timeout')), 8000))
+        ]) as any;
+
+        if (!mounted) return;
+
+        if (session?.user) {
+          const { data: profile } = await Promise.race([
+            supabase.from('profiles').select('*').eq('id', session.user.id).single(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Profile timeout')), 5000))
+          ]) as any;
+
+          if (mounted && profile) {
+            setUser(profile as Profile);
+          }
         }
+      } catch (error) {
+        console.error('Auth check error:', error);
+      } finally {
+        if (mounted) setLoading(false);
       }
-      setLoading(false);
     };
 
     checkUser();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session?.user) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', session.user.id)
-          .single();
-        
-        if (profile) {
-          setUser(profile as Profile);
+      if (!mounted) return;
+
+      try {
+        if (session?.user) {
+          const { data: profile } = await Promise.race([
+            supabase.from('profiles').select('*').eq('id', session.user.id).single(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Profile timeout')), 5000))
+          ]) as any;
+
+          if (mounted && profile) {
+            setUser(profile as Profile);
+          }
+        } else {
+          setUser(null);
         }
-      } else {
-        setUser(null);
+      } catch (error) {
+        console.error('Auth state change error:', error);
+      } finally {
+        if (mounted) setLoading(false);
       }
-      setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const logout = async () => {

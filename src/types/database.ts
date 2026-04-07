@@ -41,6 +41,9 @@ export interface Servico {
   nome: string;
   preco: number;
   duracao_total_minutos: number;
+  tempo_aplicacao_minutos: number | null;
+  tempo_espera_minutos: number | null;
+  tempo_finalizacao_minutos: number | null;
   created_at: string;
 }
 
