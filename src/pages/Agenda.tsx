@@ -1,10 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { motion } from 'motion/react';
-import { 
-  ChevronLeft, 
-  ChevronRight, 
-  Plus, 
-  Search, 
+import { motion, AnimatePresence } from 'motion/react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  Plus,
+  Search,
   Filter,
   CheckCircle2,
   Clock,
@@ -12,16 +12,99 @@ import {
   User,
   Scissors,
   CreditCard,
-  Calendar
+  Calendar,
+  X,
+  Phone,
+  UserPlus,
+  Check
 } from 'lucide-react';
 import { supabaseService } from '../services/supabaseService';
+import { Cliente, Servico, Funcionario } from '../types/database';
 import { cn, formatCurrency } from '../lib/utils';
+
+// Modal Component
+const Modal = ({ isOpen, onClose, title, children }: any) => (
+  <AnimatePresence>
+    {isOpen && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={onClose}
+          className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        />
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.95 }}
+          className="relative bg-white rounded-3xl shadow-2xl w-full max-w-md p-8 max-h-[90vh] overflow-y-auto"
+        >
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all"
+          >
+            <X size={20} />
+          </button>
+          <h3 className="text-2xl font-bold text-slate-900 mb-6">{title}</h3>
+          {children}
+        </motion.div>
+      </div>
+    )}
+  </AnimatePresence>
+);
 
 export default function Agenda() {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [searchTerm, setSearchTerm] = useState('');
   const [agendamentos, setAgendamentos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Estados do Modal de Agendamento
+  const [showAgendamentoModal, setShowAgendamentoModal] = useState(false);
+  const [agendamentoStep, setAgendamentoStep] = useState<'busca-cliente' | 'novo-cliente' | 'detalhes'>('busca-cliente');
+
+  // Estados de dados
+  const [servicos, setServicos] = useState<Servico[]>([]);
+  const [funcionarios, setFuncionarios] = useState<Funcionario[]>([]);
+
+  // Estados do formulário
+  const [telefoneBusca, setTelefoneBusca] = useState('');
+  const [clienteEncontrado, setClienteEncontrado] = useState<Cliente | null>(null);
+  const [buscandoCliente, setBuscandoCliente] = useState(false);
+
+  const [novoCliente, setNovoCliente] = useState({
+    nome: '',
+    telefone: '',
+    email: '',
+    cpf: ''
+  });
+
+  const [agendamentoForm, setAgendamentoForm] = useState({
+    cliente_id: '',
+    cliente_nome: '',
+    cliente_telefone: '',
+    servico_id: '',
+    servico_nome: '',
+    funcionario_id: '',
+    data: selectedDate,
+    horario: '',
+    valor: 0
+  });
+
+  // Carregar dados necessários
+  useEffect(() => {
+    loadDadosAgendamento();
+  }, []);
+
+  const loadDadosAgendamento = async () => {
+    const [sData, fData] = await Promise.all([
+      supabaseService.getServicos(),
+      supabaseService.getFuncionarios()
+    ]);
+    setServicos(sData);
+    setFuncionarios(fData);
+  };
 
   useEffect(() => {
     const fetchAgendamentos = async () => {
@@ -38,9 +121,135 @@ export default function Agenda() {
     fetchAgendamentos();
   }, [selectedDate]);
 
+  // Buscar cliente por telefone
+  const buscarCliente = async () => {
+    if (!telefoneBusca) {
+      alert('Digite um telefone para buscar');
+      return;
+    }
+
+    setBuscandoCliente(true);
+    try {
+      const cliente = await supabaseService.buscarClientePorTelefone(telefoneBusca);
+      if (cliente) {
+        setClienteEncontrado(cliente);
+        setAgendamentoForm(prev => ({
+          ...prev,
+          cliente_id: cliente.Cliente_id,
+          cliente_nome: cliente.Nome,
+          cliente_telefone: cliente.Telefone || ''
+        }));
+        setAgendamentoStep('detalhes');
+      } else {
+        // Cliente não encontrado, vai para cadastro
+        setAgendamentoStep('novo-cliente');
+        setNovoCliente(prev => ({ ...prev, telefone: telefoneBusca }));
+      }
+    } catch (error) {
+      console.error('Erro ao buscar cliente:', error);
+    } finally {
+      setBuscandoCliente(false);
+    }
+  };
+
+  // Criar novo cliente
+  const criarNovoCliente = async () => {
+    if (!novoCliente.nome || !novoCliente.telefone) {
+      alert('Preencha nome e telefone');
+      return;
+    }
+
+    try {
+      const novo = await supabaseService.createCliente({
+        Nome: novoCliente.nome,
+        Telefone: novoCliente.telefone,
+        Email: novoCliente.email || undefined,
+        'CPF/CNPJ': novoCliente.cpf || undefined,
+      });
+
+      setClienteEncontrado(novo);
+      setAgendamentoForm(prev => ({
+        ...prev,
+        cliente_id: novo.Cliente_id,
+        cliente_nome: novo.Nome,
+        cliente_telefone: novo.Telefone || ''
+      }));
+      setAgendamentoStep('detalhes');
+    } catch (error: any) {
+      alert('Erro ao criar cliente: ' + error.message);
+    }
+  };
+
+  // Confirmar agendamento
+  const confirmarAgendamento = async () => {
+    if (!agendamentoForm.servico_id || !agendamentoForm.horario) {
+      alert('Selecione o serviço e o horário');
+      return;
+    }
+
+    try {
+      const servico = servicos.find(s => s.id === agendamentoForm.servico_id);
+      if (!servico) return;
+
+      await supabaseService.createAgendamento({
+        cliente_id: agendamentoForm.cliente_id,
+        cliente_nome: agendamentoForm.cliente_nome,
+        cliente_telefone: agendamentoForm.cliente_telefone,
+        data: agendamentoForm.data,
+        horario: agendamentoForm.horario,
+        hora_fim: calcularHoraFim(agendamentoForm.horario, servico.duracao_total_minutos),
+        funcionario_id: agendamentoForm.funcionario_id || undefined,
+        servico_id: agendamentoForm.servico_id,
+        servico: agendamentoForm.servico_nome,
+        Valor_total: servico.preco,
+      });
+
+      // Recarregar agendamentos e fechar modal
+      const data = await supabaseService.getAgendamentosCompletos(selectedDate);
+      setAgendamentos(data);
+      fecharModal();
+      alert('Agendamento criado com sucesso!');
+    } catch (error: any) {
+      alert('Erro ao criar agendamento: ' + error.message);
+    }
+  };
+
+  const calcularHoraFim = (horaInicio: string, duracaoMinutos: number): string => {
+    const [hora, min] = horaInicio.split(':').map(Number);
+    const dataInicio = new Date();
+    dataInicio.setHours(hora, min, 0, 0);
+    dataInicio.setMinutes(dataInicio.getMinutes() + duracaoMinutos);
+    return `${String(dataInicio.getHours()).padStart(2, '0')}:${String(dataInicio.getMinutes()).padStart(2, '0')}`;
+  };
+
+  const fecharModal = () => {
+    setShowAgendamentoModal(false);
+    setAgendamentoStep('busca-cliente');
+    setTelefoneBusca('');
+    setClienteEncontrado(null);
+    setNovoCliente({ nome: '', telefone: '', email: '', cpf: '' });
+    setAgendamentoForm({
+      cliente_id: '',
+      cliente_nome: '',
+      cliente_telefone: '',
+      servico_id: '',
+      servico_nome: '',
+      funcionario_id: '',
+      data: selectedDate,
+      horario: '',
+      valor: 0
+    });
+  };
+
+  const abrirModalAgendamento = () => {
+    setAgendamentoForm(prev => ({ ...prev, data: selectedDate }));
+    setShowAgendamentoModal(true);
+    setAgendamentoStep('busca-cliente');
+  };
+
   const filteredAgendamentos = useMemo(() => {
-    return agendamentos.filter(ag => 
-      (ag.cliente_nome?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    return agendamentos.filter(ag =>
+      (ag.cliente_nome?.toLowerCase().includes(searchTerm.toLowerCase()) ||
        ag.servico_nome?.toLowerCase().includes(searchTerm.toLowerCase()))
     );
   }, [agendamentos, searchTerm]);
@@ -56,6 +265,16 @@ export default function Agenda() {
     pendente: "bg-slate-50 text-slate-500 border-slate-100",
   };
 
+  // Horários disponíveis (de 30 em 30 minutos)
+  const horariosDisponiveis = useMemo(() => {
+    const horarios: string[] = [];
+    for (let h = 8; h < 20; h++) {
+      horarios.push(`${String(h).padStart(2, '0')}:00`);
+      horarios.push(`${String(h).padStart(2, '0')}:30`);
+    }
+    return horarios;
+  }, []);
+
   return (
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -63,7 +282,10 @@ export default function Agenda() {
           <h2 className="text-3xl font-bold text-slate-900 tracking-tight">Agenda Diária</h2>
           <p className="text-slate-500">Gerencie os horários e atendimentos do dia.</p>
         </div>
-        <button className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl shadow-lg shadow-blue-200 transition-all active:scale-95 font-bold">
+        <button
+          onClick={abrirModalAgendamento}
+          className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl shadow-lg shadow-blue-200 transition-all active:scale-95 font-bold"
+        >
           <Plus size={20} />
           Novo Agendamento
         </button>
@@ -72,7 +294,7 @@ export default function Agenda() {
       <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-6">
         <div className="flex flex-col lg:flex-row gap-4 justify-between">
           <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-200">
-            <button 
+            <button
               onClick={() => {
                 const d = new Date(selectedDate);
                 d.setDate(d.getDate() - 1);
@@ -82,13 +304,13 @@ export default function Agenda() {
             >
               <ChevronLeft size={20} />
             </button>
-            <input 
-              type="date" 
+            <input
+              type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
               className="bg-transparent border-none outline-none font-bold text-slate-700 px-2"
             />
-            <button 
+            <button
               onClick={() => {
                 const d = new Date(selectedDate);
                 d.setDate(d.getDate() + 1);
@@ -103,8 +325,8 @@ export default function Agenda() {
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="relative">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-              <input 
-                type="text" 
+              <input
+                type="text"
                 placeholder="Buscar cliente ou serviço..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -121,7 +343,7 @@ export default function Agenda() {
         <div className="overflow-x-auto">
           {loading ? (
             <div className="flex items-center justify-center py-20">
-              <motion.div 
+              <motion.div
                 animate={{ rotate: 360 }}
                 transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
                 className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full"
@@ -143,7 +365,7 @@ export default function Agenda() {
               <tbody>
                 {filteredAgendamentos.length > 0 ? (
                   filteredAgendamentos.map((ag, idx) => (
-                    <motion.tr 
+                    <motion.tr
                       key={ag.agendamento_id || `ag-agenda-${idx}`}
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -168,9 +390,9 @@ export default function Agenda() {
                       </td>
                       <td className="px-4 py-4 border-y border-slate-100">
                         <div className="flex items-center gap-2">
-                          <div 
-                            className="w-2 h-2 rounded-full" 
-                            style={{ backgroundColor: ag.funcionario_cor }} 
+                          <div
+                            className="w-2 h-2 rounded-full"
+                            style={{ backgroundColor: ag.funcionario_cor }}
                           />
                           <span className="text-sm font-medium text-slate-700">
                             {ag.funcionario_nome}
@@ -218,6 +440,263 @@ export default function Agenda() {
           )}
         </div>
       </div>
+
+      {/* ==================== MODAL DE AGENDAMENTO ==================== */}
+
+      <Modal isOpen={showAgendamentoModal} onClose={fecharModal} title="Novo Agendamento">
+        {/* ETAPA 1: Buscar Cliente */}
+        {agendamentoStep === 'busca-cliente' && (
+          <div className="space-y-6">
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center text-blue-600 mx-auto mb-4">
+                <Phone size={32} />
+              </div>
+              <p className="text-slate-600">Buscar cliente por telefone</p>
+              <p className="text-sm text-slate-400 mt-1">Digite o número com DDD</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Telefone do Cliente</label>
+              <input
+                type="tel"
+                value={telefoneBusca}
+                onChange={(e) => setTelefoneBusca(e.target.value)}
+                placeholder="(11) 99999-9999"
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+            </div>
+
+            <button
+              onClick={buscarCliente}
+              disabled={buscandoCliente}
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-bold py-4 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2"
+            >
+              {buscandoCliente ? (
+                <>
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                    className="w-5 h-5 border-2 border-white border-t-transparent rounded-full"
+                  />
+                  Buscando...
+                </>
+              ) : (
+                <>
+                  <Search size={20} />
+                  Buscar Cliente
+                </>
+              )}
+            </button>
+
+            <div className="text-center">
+              <button
+                onClick={() => setAgendamentoStep('novo-cliente')}
+                className="text-blue-600 hover:text-blue-700 font-medium text-sm flex items-center justify-center gap-2 mx-auto"
+              >
+                <UserPlus size={16} />
+                Cadastrar novo cliente
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ETAPA 2: Novo Cliente */}
+        {agendamentoStep === 'novo-cliente' && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center text-emerald-600">
+                <UserPlus size={20} />
+              </div>
+              <div>
+                <p className="font-bold text-slate-900">Cadastrar Novo Cliente</p>
+                <p className="text-xs text-slate-500">Preencha os dados do cliente</p>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Nome Completo *</label>
+              <input
+                type="text"
+                value={novoCliente.nome}
+                onChange={(e) => setNovoCliente({ ...novoCliente, nome: e.target.value })}
+                placeholder="Nome do cliente"
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Telefone *</label>
+              <input
+                type="tel"
+                value={novoCliente.telefone}
+                onChange={(e) => setNovoCliente({ ...novoCliente, telefone: e.target.value })}
+                placeholder="(11) 99999-9999"
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">E-mail</label>
+              <input
+                type="email"
+                value={novoCliente.email}
+                onChange={(e) => setNovoCliente({ ...novoCliente, email: e.target.value })}
+                placeholder="cliente@email.com"
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">CPF/CNPJ</label>
+              <input
+                type="text"
+                value={novoCliente.cpf}
+                onChange={(e) => setNovoCliente({ ...novoCliente, cpf: e.target.value })}
+                placeholder="000.000.000-00"
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+            </div>
+
+            <div className="flex gap-3 pt-4">
+              <button
+                onClick={() => setAgendamentoStep('busca-cliente')}
+                className="flex-1 py-3 border border-slate-200 rounded-xl font-bold text-slate-600 hover:bg-slate-50 transition-colors"
+              >
+                Voltar
+              </button>
+              <button
+                onClick={criarNovoCliente}
+                className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition-colors flex items-center justify-center gap-2"
+              >
+                <Check size={18} />
+                Salvar Cliente
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ETAPA 3: Detalhes do Agendamento */}
+        {agendamentoStep === 'detalhes' && (
+          <div className="space-y-4">
+            {/* Cliente Selecionado */}
+            <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold">
+                  {agendamentoForm.cliente_nome.charAt(0)}
+                </div>
+                <div className="flex-1">
+                  <p className="font-bold text-slate-900">{agendamentoForm.cliente_nome}</p>
+                  <p className="text-xs text-slate-500">{agendamentoForm.cliente_telefone}</p>
+                </div>
+                <button
+                  onClick={() => setAgendamentoStep('busca-cliente')}
+                  className="text-blue-600 text-xs font-medium hover:underline"
+                >
+                  Alterar
+                </button>
+              </div>
+            </div>
+
+            {/* Seleção de Serviço */}
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Serviço *</label>
+              <select
+                value={agendamentoForm.servico_id}
+                onChange={(e) => {
+                  const servico = servicos.find(s => s.id === e.target.value);
+                  setAgendamentoForm({
+                    ...agendamentoForm,
+                    servico_id: e.target.value,
+                    servico_nome: servico?.nome || '',
+                    valor: servico?.preco || 0
+                  });
+                }}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+              >
+                <option value="">Selecione um serviço</option>
+                {servicos.map(s => (
+                  <option key={s.id} value={s.id}>
+                    {s.nome} - {formatCurrency(s.preco)} ({s.duracao_total_minutos} min)
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Seleção de Funcionário */}
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Profissional (opcional)</label>
+              <select
+                value={agendamentoForm.funcionario_id}
+                onChange={(e) => setAgendamentoForm({ ...agendamentoForm, funcionario_id: e.target.value })}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+              >
+                <option value="">Qualquer profissional</option>
+                {funcionarios.map(f => (
+                  <option key={f.id} value={f.id}>
+                    {f.nome}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Data */}
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Data *</label>
+              <input
+                type="date"
+                value={agendamentoForm.data}
+                onChange={(e) => setAgendamentoForm({ ...agendamentoForm, data: e.target.value })}
+                min={new Date().toISOString().split('T')[0]}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+            </div>
+
+            {/* Horário */}
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Horário *</label>
+              <select
+                value={agendamentoForm.horario}
+                onChange={(e) => setAgendamentoForm({ ...agendamentoForm, horario: e.target.value })}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+              >
+                <option value="">Selecione um horário</option>
+                {horariosDisponiveis.map(h => (
+                  <option key={h} value={h}>{h}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Resumo */}
+            {agendamentoForm.servico_id && agendamentoForm.horario && (
+              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
+                <p className="text-sm font-semibold text-slate-700 mb-2">Resumo do Agendamento</p>
+                <div className="space-y-1 text-sm">
+                  <p className="text-slate-600"><span className="font-medium">Serviço:</span> {agendamentoForm.servico_nome}</p>
+                  <p className="text-slate-600"><span className="font-medium">Valor:</span> {formatCurrency(agendamentoForm.valor)}</p>
+                  <p className="text-slate-600"><span className="font-medium">Data:</span> {new Date(agendamentoForm.data + 'T00:00:00').toLocaleDateString('pt-BR')}</p>
+                  <p className="text-slate-600"><span className="font-medium">Horário:</span> {agendamentoForm.horario}</p>
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-3 pt-4">
+              <button
+                onClick={fecharModal}
+                className="flex-1 py-3 border border-slate-200 rounded-xl font-bold text-slate-600 hover:bg-slate-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmarAgendamento}
+                className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-colors flex items-center justify-center gap-2"
+              >
+                <Check size={18} />
+                Confirmar
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

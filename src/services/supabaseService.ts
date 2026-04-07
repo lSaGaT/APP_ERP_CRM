@@ -64,6 +64,43 @@ export const supabaseService = {
     );
   },
 
+  async buscarClientePorTelefone(telefone: string): Promise<Cliente | null> {
+    // Remove formatação do telefone (só números)
+    const telefoneLimpo = telefone.replace(/\D/g, '');
+
+    return safeQuery(
+      () =>
+        supabase
+          .from('Clientes')
+          .select('*')
+          .ilike('Telefone', `%${telefoneLimpo}%`)
+          .limit(1)
+          .single(),
+      null
+    );
+  },
+
+  async createCliente(data: {
+    Nome: string;
+    Telefone?: string;
+    Email?: string;
+    'CPF/CNPJ'?: string;
+  }): Promise<Cliente> {
+    const { data, error } = await supabase
+      .from('Clientes')
+      .insert({
+        Nome: data.Nome,
+        Telefone: data.Telefone || null,
+        Email: data.Email || null,
+        'CPF/CNPJ': data['CPF/CNPJ'] || null,
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data as Cliente;
+  },
+
   // Funcionários
   async getFuncionarios(): Promise<Funcionario[]> {
     return safeQuery(
@@ -259,5 +296,41 @@ export const supabaseService = {
   async deleteBloqueio(id: string) {
     const { error } = await supabase.from('bloqueios_agenda').delete().eq('id', id);
     if (error) throw error;
+  },
+
+  // Criar Agendamento
+  async createAgendamento(data: {
+    cliente_id?: string;
+    cliente_nome: string;
+    cliente_telefone?: string;
+    data: string;
+    horario: string;
+    hora_fim: string;
+    funcionario_id?: string;
+    servico_id?: string;
+    servico: string;
+    Valor_total?: number;
+  }) {
+    const { data: agendamento, error } = await supabase
+      .from('agendamentos')
+      .insert({
+        cliente_id: data.cliente_id || null,
+        cliente_nome: data.cliente_nome,
+        cliente_telefone: data.cliente_telefone || null,
+        data: data.data,
+        horario: data.horario,
+        hora_fim: data.hora_fim,
+        funcionario_id: data.funcionario_id || null,
+        servico_id: data.servico_id || null,
+        servico: data.servico,
+        Valor_total: data.Valor_total || null,
+        status: 'pendente',
+        status_pagamento: 'pendente',
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return agendamento;
   }
 };
