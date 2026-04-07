@@ -86,7 +86,7 @@ export const supabaseService = {
     Email?: string;
     'CPF/CNPJ'?: string;
   }): Promise<Cliente> {
-    const { data, error } = await supabase
+    const { data: clienteData, error } = await supabase
       .from('Clientes')
       .insert({
         Nome: data.Nome,
@@ -98,7 +98,7 @@ export const supabaseService = {
       .single();
 
     if (error) throw error;
-    return data as Cliente;
+    return clienteData as Cliente;
   },
 
   // Funcionários
