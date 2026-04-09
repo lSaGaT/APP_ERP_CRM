@@ -180,15 +180,21 @@ export default function CRM() {
   // Filtrar clientes do dia (baseado em ultima_msg)
   const clientesDoDia = useMemo(() => {
     const hoje = new Date();
-    hoje.setHours(0, 0, 0, 0);
+    // Pegar ano, mês e dia local
+    const hojeAno = hoje.getFullYear();
+    const hojeMes = hoje.getMonth();
+    const hojeDia = hoje.getDate();
 
     return clientes.filter(c => {
       if (!c.ultima_msg) return false;
 
       const dataMsg = new Date(c.ultima_msg);
-      dataMsg.setHours(0, 0, 0, 0);
-
-      return dataMsg.getTime() === hoje.getTime();
+      // Comparar ano, mês e dia (convertido de UTC para local automaticamente pelo Date)
+      return (
+        dataMsg.getFullYear() === hojeAno &&
+        dataMsg.getMonth() === hojeMes &&
+        dataMsg.getDate() === hojeDia
+      );
     });
   }, [clientes]);
 
