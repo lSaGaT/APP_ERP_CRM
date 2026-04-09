@@ -56,6 +56,19 @@ export const supabaseService = {
     );
   },
 
+  async getAgendamentosPorPeriodo(dataInicio: string, dataFim: string): Promise<any[]> {
+    return safeQuery(
+      () => {
+        return supabase
+          .from('vw_agenda_completa')
+          .select('*')
+          .gte('data', dataInicio)
+          .lte('data', dataFim);
+      },
+      []
+    );
+  },
+
   // Clientes
   async getClientes(): Promise<Cliente[]> {
     return safeQuery(

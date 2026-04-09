@@ -16,7 +16,8 @@ import {
   X,
   Phone,
   UserPlus,
-  Check
+  Check,
+  ChevronDown
 } from 'lucide-react';
 import { supabaseService } from '../services/supabaseService';
 import { Cliente, Servico, Funcionario } from '../types/database';
@@ -56,8 +57,10 @@ const Modal = ({ isOpen, onClose, title, children }: any) => (
 
 export default function Agenda() {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [currentMonth, setCurrentMonth] = useState(new Date());
   const [searchTerm, setSearchTerm] = useState('');
   const [agendamentos, setAgendamentos] = useState<any[]>([]);
+  const [agendamentosDoMes, setAgendamentosDoMes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Estados do Modal de Agendamento
@@ -120,6 +123,23 @@ export default function Agenda() {
     };
     fetchAgendamentos();
   }, [selectedDate]);
+
+  // Carregar agendamentos do mês para mostrar indicadores no calendário
+  useEffect(() => {
+    const fetchAgendamentosMes = async () => {
+      try {
+        const year = currentMonth.getFullYear();
+        const month = String(currentMonth.getMonth() + 1).padStart(2, '0');
+        const primeiroDia = `${year}-${month}-01`;
+        const ultimoDia = new Date(year, currentMonth.getMonth() + 1, 0).toISOString().split('T')[0];
+        const data = await supabaseService.getAgendamentosPorPeriodo(primeiroDia, ultimoDia);
+        setAgendamentosDoMes(data);
+      } catch (error) {
+        console.error('Error fetching agendamentos do mes:', error);
+      }
+    };
+    fetchAgendamentosMes();
+  }, [currentMonth]);
 
   // Buscar cliente por telefone
   const buscarCliente = async () => {
@@ -275,12 +295,70 @@ export default function Agenda() {
     return horarios;
   }, []);
 
+  // Funções auxiliares para o calendário
+  const getDaysInMonth = (date: Date) => {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const startingDayOfWeek = firstDay.getDay(); // 0 = domingo
+
+    const days: any[] = [];
+
+    // Dias vazios antes do primeiro dia do mês
+    for (let i = 0; i < startingDayOfWeek; i++) {
+      days.push({ day: '', isEmpty: true });
+    }
+
+    // Dias do mês
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      const hasAgendamento = agendamentosDoMes.some((ag: any) => ag.data === dateStr);
+      const isSelected = selectedDate === dateStr;
+      const isToday = new Date().toISOString().split('T')[0] === dateStr;
+
+      days.push({
+        day,
+        date: dateStr,
+        isEmpty: false,
+        hasAgendamento,
+        isSelected,
+        isToday
+      });
+    }
+
+    return days;
+  };
+
+  const monthNames = [
+    'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+  ];
+
+  const weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+
+  const handlePreviousMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
+  };
+
+  const handleNextMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1));
+  };
+
+  const handleDateClick = (dateStr: string) => {
+    setSelectedDate(dateStr);
+  };
+
+  const calendarDays = getDaysInMonth(currentMonth);
+
   return (
     <div className="space-y-8">
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex flex-col gap-1">
-          <h2 className="text-3xl font-bold text-slate-900 tracking-tight">Agenda Diária</h2>
-          <p className="text-slate-500">Gerencie os horários e atendimentos do dia.</p>
+          <h2 className="text-3xl font-bold text-slate-900 tracking-tight">Agenda</h2>
+          <p className="text-slate-500">Gerencie os horários e atendimentos.</p>
         </div>
         <button
           onClick={abrirModalAgendamento}
@@ -291,153 +369,222 @@ export default function Agenda() {
         </button>
       </div>
 
-      <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-6">
-        <div className="flex flex-col lg:flex-row gap-4 justify-between">
-          <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-200">
-            <button
-              onClick={() => {
-                const d = new Date(selectedDate);
-                d.setDate(d.getDate() - 1);
-                setSelectedDate(d.toISOString().split('T')[0]);
-              }}
-              className="p-2 hover:bg-white hover:shadow-sm rounded-lg transition-all"
-            >
-              <ChevronLeft size={20} />
-            </button>
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="bg-transparent border-none outline-none font-bold text-slate-700 px-2"
-            />
-            <button
-              onClick={() => {
-                const d = new Date(selectedDate);
-                d.setDate(d.getDate() + 1);
-                setSelectedDate(d.toISOString().split('T')[0]);
-              }}
-              className="p-2 hover:bg-white hover:shadow-sm rounded-lg transition-all"
-            >
-              <ChevronRight size={20} />
-            </button>
-          </div>
-
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-              <input
-                type="text"
-                placeholder="Buscar cliente ou serviço..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all w-full sm:w-64"
-              />
+      {/* Grid Principal: Calendário + Agendamentos */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Coluna Esquerda: Calendário */}
+        <div className="lg:col-span-5 xl:col-span-4">
+          <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm sticky top-6">
+            {/* Navegação do Mês */}
+            <div className="flex items-center justify-between mb-6">
+              <button
+                onClick={handlePreviousMonth}
+                className="p-2 hover:bg-slate-100 rounded-xl transition-colors"
+              >
+                <ChevronLeft size={24} className="text-slate-600" />
+              </button>
+              <h3 className="text-xl font-bold text-slate-900">
+                {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
+              </h3>
+              <button
+                onClick={handleNextMonth}
+                className="p-2 hover:bg-slate-100 rounded-xl transition-colors"
+              >
+                <ChevronRight size={24} className="text-slate-600" />
+              </button>
             </div>
-            <button className="flex items-center justify-center gap-2 px-4 py-2.5 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors text-slate-600 font-medium">
-              <Filter size={18} />
-              Filtros
-            </button>
+
+            {/* Dias da Semana */}
+            <div className="grid grid-cols-7 gap-1 mb-2">
+              {weekDays.map((day) => (
+                <div key={day} className="text-center text-xs font-semibold text-slate-400 uppercase py-2">
+                  {day}
+                </div>
+              ))}
+            </div>
+
+            {/* Grade do Calendário */}
+            <div className="grid grid-cols-7 gap-1">
+              {calendarDays.map((dayInfo, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => !dayInfo.isEmpty && handleDateClick(dayInfo.date)}
+                  disabled={dayInfo.isEmpty}
+                  className={cn(
+                    "relative aspect-square rounded-xl flex items-center justify-center text-sm font-medium transition-all",
+                    dayInfo.isEmpty && "invisible",
+                    !dayInfo.isEmpty && [
+                      "hover:bg-blue-50 hover:scale-105 active:scale-95",
+                      dayInfo.isSelected && "bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-200",
+                      dayInfo.isToday && !dayInfo.isSelected && "bg-blue-100 text-blue-700 font-bold",
+                      !dayInfo.isSelected && !dayInfo.isToday && "text-slate-700"
+                    ]
+                  )}
+                >
+                  <span>{dayInfo.day}</span>
+
+                  {/* Indicador de agendamentos */}
+                  {dayInfo.hasAgendamento && !dayInfo.isEmpty && (
+                    <div className={cn(
+                      "absolute bottom-1.5 w-1.5 h-1.5 rounded-full",
+                      dayInfo.isSelected ? "bg-white" : "bg-blue-500"
+                    )} />
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {/* Data Selecionada */}
+            <div className="mt-4 pt-4 border-t border-slate-100">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-500">Data selecionada:</span>
+                <span className="font-bold text-slate-900">
+                  {new Date(selectedDate + 'T00:00:00').toLocaleDateString('pt-BR', {
+                    day: '2-digit',
+                    month: 'long',
+                    year: 'numeric'
+                  })}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          {loading ? (
-            <div className="flex items-center justify-center py-20">
-              <motion.div
-                animate={{ rotate: 360 }}
-                transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full"
-              />
+        {/* Coluna Direita: Agendamentos do Dia */}
+        <div className="lg:col-span-7 xl:col-span-8">
+          <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-6">
+            {/* Header dos Agendamentos */}
+            <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
+              <div>
+                <h3 className="text-xl font-bold text-slate-900">
+                  {new Date(selectedDate + 'T00:00:00').toLocaleDateString('pt-BR', {
+                    day: '2-digit',
+                    month: 'long'
+                  })}
+                </h3>
+                <p className="text-sm text-slate-500">
+                  {filteredAgendamentos.length} {filteredAgendamentos.length === 1 ? 'agendamento' : 'agendamentos'}
+                </p>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+                <div className="relative flex-1 sm:flex-none">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                  <input
+                    type="text"
+                    placeholder="Buscar..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm w-full sm:w-48"
+                  />
+                </div>
+                <button className="flex items-center justify-center gap-2 px-3 py-2 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors text-slate-600 text-sm font-medium">
+                  <Filter size={16} />
+                  <span>Filtros</span>
+                </button>
+              </div>
             </div>
-          ) : (
-            <table className="w-full border-separate border-spacing-y-3">
-              <thead>
-                <tr className="text-left text-slate-400 text-xs uppercase tracking-widest font-bold">
-                  <th className="px-4 pb-2">Horário</th>
-                  <th className="px-4 pb-2">Cliente</th>
-                  <th className="px-4 pb-2">Serviço</th>
-                  <th className="px-4 pb-2">Profissional</th>
-                  <th className="px-4 pb-2">Status</th>
-                  <th className="px-4 pb-2">Pagamento</th>
-                  <th className="px-4 pb-2 text-right">Valor</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredAgendamentos.length > 0 ? (
-                  filteredAgendamentos.map((ag, idx) => (
-                    <motion.tr
-                      key={ag.agendamento_id || `ag-agenda-${idx}`}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="group bg-white hover:bg-slate-50 transition-colors"
-                    >
-                      <td className="px-4 py-4 rounded-l-2xl border-y border-l border-slate-100">
-                        <div className="flex items-center gap-2 font-bold text-slate-900">
-                          <Clock size={16} className="text-blue-500" />
-                          {ag.hora_inicio?.slice(0, 5)}
-                        </div>
-                        <div className="text-[10px] text-slate-400 font-medium">Fim: {ag.hora_fim?.slice(0, 5)}</div>
-                      </td>
-                      <td className="px-4 py-4 border-y border-slate-100">
-                        <div className="font-bold text-slate-900">{ag.cliente_nome}</div>
-                        <div className="text-xs text-slate-500">{ag.cliente_telefone}</div>
-                      </td>
-                      <td className="px-4 py-4 border-y border-slate-100">
-                        <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
-                          <Scissors size={14} className="text-slate-400" />
-                          {ag.servico_nome}
-                        </div>
-                      </td>
-                      <td className="px-4 py-4 border-y border-slate-100">
-                        <div className="flex items-center gap-2">
-                          <div
-                            className="w-2 h-2 rounded-full"
-                            style={{ backgroundColor: ag.funcionario_cor }}
-                          />
-                          <span className="text-sm font-medium text-slate-700">
-                            {ag.funcionario_nome}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-4 border-y border-slate-100">
-                        <span className={cn(
-                          "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border",
-                          statusColors[ag.status]
-                        )}>
-                          {ag.status}
-                        </span>
-                      </td>
-                      <td className="px-4 py-4 border-y border-slate-100">
-                        <div className="flex items-center gap-2">
-                          <span className={cn(
-                            "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border",
-                            paymentColors[ag.status_pagamento]
-                          )}>
-                            {ag.status_pagamento}
-                          </span>
-                          {ag.forma_pagamento && (
-                            <span className="text-[10px] text-slate-400 font-bold uppercase">{ag.forma_pagamento}</span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-4 rounded-r-2xl border-y border-r border-slate-100 text-right">
-                        <div className="font-bold text-slate-900">{formatCurrency(ag.valor_total)}</div>
-                      </td>
-                    </motion.tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={7} className="py-20 text-center">
-                      <div className="flex flex-col items-center gap-3 text-slate-400">
-                        <Calendar size={48} strokeWidth={1} />
-                        <p className="font-medium">Nenhum agendamento para esta data.</p>
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          )}
+
+            {/* Lista de Agendamentos */}
+            <div className="overflow-x-auto">
+              {loading ? (
+                <div className="flex items-center justify-center py-20">
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                    className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full"
+                  />
+                </div>
+              ) : (
+                <table className="w-full border-separate border-spacing-y-3">
+                  <thead>
+                    <tr className="text-left text-slate-400 text-xs uppercase tracking-widest font-bold">
+                      <th className="px-4 pb-2">Horário</th>
+                      <th className="px-4 pb-2">Cliente</th>
+                      <th className="px-4 pb-2">Serviço</th>
+                      <th className="px-4 pb-2">Profissional</th>
+                      <th className="px-4 pb-2">Status</th>
+                      <th className="px-4 pb-2">Pagamento</th>
+                      <th className="px-4 pb-2 text-right">Valor</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredAgendamentos.length > 0 ? (
+                      filteredAgendamentos.map((ag, idx) => (
+                        <motion.tr
+                          key={ag.agendamento_id || `ag-agenda-${idx}`}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="group bg-white hover:bg-slate-50 transition-colors"
+                        >
+                          <td className="px-4 py-4 rounded-l-2xl border-y border-l border-slate-100">
+                            <div className="flex items-center gap-2 font-bold text-slate-900">
+                              <Clock size={16} className="text-blue-500" />
+                              {ag.hora_inicio?.slice(0, 5)}
+                            </div>
+                            <div className="text-[10px] text-slate-400 font-medium">Fim: {ag.hora_fim?.slice(0, 5)}</div>
+                          </td>
+                          <td className="px-4 py-4 border-y border-slate-100">
+                            <div className="font-bold text-slate-900">{ag.cliente_nome}</div>
+                            <div className="text-xs text-slate-500">{ag.cliente_telefone}</div>
+                          </td>
+                          <td className="px-4 py-4 border-y border-slate-100">
+                            <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                              <Scissors size={14} className="text-slate-400" />
+                              {ag.servico_nome}
+                            </div>
+                          </td>
+                          <td className="px-4 py-4 border-y border-slate-100">
+                            <div className="flex items-center gap-2">
+                              <div
+                                className="w-2 h-2 rounded-full"
+                                style={{ backgroundColor: ag.funcionario_cor }}
+                              />
+                              <span className="text-sm font-medium text-slate-700">
+                                {ag.funcionario_nome}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-4 border-y border-slate-100">
+                            <span className={cn(
+                              "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border",
+                              statusColors[ag.status]
+                            )}>
+                              {ag.status}
+                            </span>
+                          </td>
+                          <td className="px-4 py-4 border-y border-slate-100">
+                            <div className="flex items-center gap-2">
+                              <span className={cn(
+                                "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border",
+                                paymentColors[ag.status_pagamento]
+                              )}>
+                                {ag.status_pagamento}
+                              </span>
+                              {ag.forma_pagamento && (
+                                <span className="text-[10px] text-slate-400 font-bold uppercase">{ag.forma_pagamento}</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-4 rounded-r-2xl border-y border-r border-slate-100 text-right">
+                            <div className="font-bold text-slate-900">{formatCurrency(ag.valor_total)}</div>
+                          </td>
+                        </motion.tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={7} className="py-20 text-center">
+                          <div className="flex flex-col items-center gap-3 text-slate-400">
+                            <Calendar size={48} strokeWidth={1} />
+                            <p className="font-medium">Nenhum agendamento para esta data.</p>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
