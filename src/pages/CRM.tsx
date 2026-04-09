@@ -18,16 +18,18 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { motion } from 'motion/react';
-import { 
-  Plus, 
-  MoreVertical, 
-  Phone, 
-  Mail, 
-  Clock, 
+import {
+  Plus,
+  MoreVertical,
+  Phone,
+  Mail,
+  Clock,
   Calendar,
   UserPlus,
   Search,
-  Filter
+  Filter,
+  Lock,
+  LockOpen
 } from 'lucide-react';
 import { supabaseService } from '../services/supabaseService';
 import { Cliente } from '../types/database';
@@ -40,7 +42,11 @@ const COLUMNS = [
   { id: 'status_perdido', label: 'Perdidos', color: 'bg-rose-500' },
 ];
 
-const KanbanCard: React.FC<{ cliente: Cliente, isOverlay?: boolean }> = ({ cliente, isOverlay }) => {
+const KanbanCard: React.FC<{
+  cliente: Cliente,
+  isOverlay?: boolean,
+  onToggleTrava?: (clienteId: string, newTrava: boolean) => void
+}> = ({ cliente, isOverlay, onToggleTrava }) => {
   const {
     attributes,
     listeners,
@@ -56,6 +62,16 @@ const KanbanCard: React.FC<{ cliente: Cliente, isOverlay?: boolean }> = ({ clien
     opacity: isDragging ? 0.3 : 1,
   };
 
+  const isLocked = cliente.trava === true;
+
+  const handleToggleTrava = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onToggleTrava) {
+      const newTrava = !isLocked;
+      onToggleTrava(cliente.Cliente_id, newTrava);
+    }
+  };
+
   return (
     <div
       ref={setNodeRef}
@@ -63,17 +79,49 @@ const KanbanCard: React.FC<{ cliente: Cliente, isOverlay?: boolean }> = ({ clien
       {...attributes}
       {...listeners}
       className={cn(
-        "bg-white p-4 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all cursor-grab active:cursor-grabbing group",
+        "bg-white p-4 rounded-2xl border shadow-sm hover:shadow-md transition-all cursor-grab active:cursor-grabbing group relative",
+        isLocked
+          ? "border-rose-200 bg-rose-50/30"
+          : "border-slate-100",
         isOverlay && "shadow-xl border-blue-200 ring-2 ring-blue-500/20"
       )}
     >
+      {/* Indicator bar when locked */}
+      {isLocked && (
+        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-rose-500 to-orange-500 rounded-t-2xl" />
+      )}
+
       <div className="flex items-start justify-between mb-3">
-        <h4 className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors">{cliente.Nome}</h4>
-        <button className="p-1 hover:bg-slate-50 rounded-lg text-slate-400">
-          <MoreVertical size={16} />
-        </button>
+        <div className="flex items-center gap-2">
+          {isLocked && (
+            <div className="p-1 bg-rose-100 rounded-lg">
+              <Lock size={14} className="text-rose-600" />
+            </div>
+          )}
+          <h4 className={cn(
+            "font-bold transition-colors",
+            isLocked ? "text-rose-700" : "text-slate-900 group-hover:text-blue-600"
+          )}>{cliente.Nome}</h4>
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={handleToggleTrava}
+            className={cn(
+              "p-1.5 rounded-lg transition-all",
+              isLocked
+                ? "bg-rose-100 text-rose-600 hover:bg-rose-200"
+                : "bg-slate-100 text-slate-400 hover:bg-slate-200 hover:text-slate-600"
+            )}
+            title={isLocked ? "Desbloquear conversa (IA voltará a responder)" : "Bloquear conversa (só humanos)"}
+          >
+            {isLocked ? <LockOpen size={14} /> : <Lock size={14} />}
+          </button>
+          <button className="p-1 hover:bg-slate-50 rounded-lg text-slate-400">
+            <MoreVertical size={16} />
+          </button>
+        </div>
       </div>
-      
+
       <div className="space-y-2 mb-4">
         <div className="flex items-center gap-2 text-xs text-slate-500">
           <Phone size={12} />
@@ -90,12 +138,20 @@ const KanbanCard: React.FC<{ cliente: Cliente, isOverlay?: boolean }> = ({ clien
           <Clock size={12} />
           <span>{cliente.created_at ? new Date(cliente.created_at).toLocaleDateString('pt-BR') : 'N/A'}</span>
         </div>
-        <div className={cn(
-          "px-2 py-0.5 rounded-md text-[10px] font-bold uppercase",
-          cliente.followUp === 'followUp_0' ? "bg-red-50 text-red-600" : 
-          cliente.followUp === 'followUp_1' ? "bg-amber-50 text-amber-600" : "bg-emerald-50 text-emerald-600"
-        )}>
-          {cliente.followUp || 'N/A'}
+        <div className="flex items-center gap-2">
+          {isLocked && (
+            <div className="px-2 py-0.5 rounded-md bg-rose-100 text-rose-600 text-[10px] font-bold uppercase flex items-center gap-1">
+              <Lock size={10} />
+              Bloqueado
+            </div>
+          )}
+          <div className={cn(
+            "px-2 py-0.5 rounded-md text-[10px] font-bold uppercase",
+            cliente.followUp === 'followUp_0' ? "bg-red-50 text-red-600" :
+            cliente.followUp === 'followUp_1' ? "bg-amber-50 text-amber-600" : "bg-emerald-50 text-emerald-600"
+          )}>
+            {cliente.followUp || 'N/A'}
+          </div>
         </div>
       </div>
     </div>
@@ -120,6 +176,17 @@ export default function CRM() {
     };
     fetchClientes();
   }, []);
+
+  const handleToggleTrava = async (clienteId: string, newTrava: boolean) => {
+    try {
+      await supabaseService.updateClienteTrava(clienteId, newTrava);
+      setClientes(prev => prev.map(c =>
+        c.Cliente_id === clienteId ? { ...c, trava: newTrava } : c
+      ));
+    } catch (error) {
+      console.error('Error updating trava:', error);
+    }
+  };
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -231,7 +298,11 @@ export default function CRM() {
                     {clientes
                       .filter(c => c.status === col.id)
                       .map((cliente) => (
-                        <KanbanCard key={cliente.Cliente_id} cliente={cliente} />
+                        <KanbanCard
+                          key={cliente.Cliente_id}
+                          cliente={cliente}
+                          onToggleTrava={handleToggleTrava}
+                        />
                       ))}
                   </SortableContext>
                 </div>
@@ -248,7 +319,11 @@ export default function CRM() {
               }),
             }}>
               {activeCliente ? (
-                <KanbanCard cliente={activeCliente} isOverlay />
+                <KanbanCard
+                  cliente={activeCliente}
+                  isOverlay
+                  onToggleTrava={handleToggleTrava}
+                />
               ) : null}
             </DragOverlay>
           </DndContext>

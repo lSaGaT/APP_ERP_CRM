@@ -175,6 +175,14 @@ export const supabaseService = {
     if (error) throw error;
   },
 
+  async updateClienteTrava(clienteId: string, trava: boolean) {
+    const { error } = await supabase
+      .from('Clientes')
+      .update({ trava })
+      .eq('Cliente_id', clienteId);
+    if (error) throw error;
+  },
+
   async createProfile(email: string, password: string, fullName: string, role: 'admin' | 'atendente') {
     // 1. Create auth user
     const { data: authData, error: authError } = await supabase.auth.signUp({

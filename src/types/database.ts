@@ -24,6 +24,7 @@ export interface Cliente {
   status: 'status_novo' | 'status_em_atendimento' | 'status_concluido' | 'status_perdido';
   followUp: 'followUp_0' | 'followUp_1' | 'followUp_2';
   ultima_msg: string | null;
+  trava: boolean;
 }
 
 export interface Funcionario {
