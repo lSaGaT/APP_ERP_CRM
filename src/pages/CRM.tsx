@@ -45,7 +45,7 @@ const COLUMNS = [
 const KanbanCard: React.FC<{
   cliente: Cliente,
   isOverlay?: boolean,
-  onToggleTrava?: (clienteId: string, newTrava: boolean) => void
+  onToggleTrava?: (clienteId: string, newTrava: 'true' | 'false') => void
 }> = ({ cliente, isOverlay, onToggleTrava }) => {
   const {
     attributes,
@@ -62,12 +62,12 @@ const KanbanCard: React.FC<{
     opacity: isDragging ? 0.3 : 1,
   };
 
-  const isLocked = cliente.trava === true;
+  const isLocked = cliente.trava === 'true';
 
   const handleToggleTrava = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (onToggleTrava) {
-      const newTrava = !isLocked;
+      const newTrava: 'true' | 'false' = isLocked ? 'false' : 'true';
       onToggleTrava(cliente.Cliente_id, newTrava);
     }
   };
@@ -123,13 +123,25 @@ const KanbanCard: React.FC<{
       </div>
 
       <div className="space-y-2 mb-4">
-        <div className="flex items-center gap-2 text-xs text-slate-500">
-          <Phone size={12} />
-          <span>{cliente.Telefone}</span>
+        <div className="flex items-center gap-2 text-xs">
+          <Phone size={12} className="text-slate-400" />
+          {cliente.Telefone ? (
+            <a
+              href={`https://wa.me/${cliente.Telefone.replace(/\D/g, '')}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-green-600 hover:text-green-700 hover:underline font-medium transition-colors"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {cliente.Telefone}
+            </a>
+          ) : (
+            <span className="text-slate-400">Sem telefone</span>
+          )}
         </div>
         <div className="flex items-center gap-2 text-xs text-slate-500">
           <Mail size={12} />
-          <span className="truncate">{cliente.Email}</span>
+          <span className="truncate">{cliente.Email || 'Sem e-mail'}</span>
         </div>
       </div>
 
@@ -201,15 +213,23 @@ export default function CRM() {
     });
   }, [clientes]);
 
-  const handleToggleTrava = async (clienteId: string, newTrava: boolean) => {
+  const handleToggleTrava = async (clienteId: string, newTrava: 'true' | 'false') => {
+    console.log('=== TOGGLE TRAVA ===');
+    console.log('Cliente ID:', clienteId);
+    console.log('Nova trava:', newTrava);
+
     try {
       await supabaseService.updateClienteTrava(clienteId, newTrava);
+      console.log('✅ Trava atualizada com sucesso!');
+
       setClientes(prev => prev.map(c =>
         c.Cliente_id === clienteId ? { ...c, trava: newTrava } : c
       ));
-    } catch (error) {
-      console.error('Error updating trava:', error);
+    } catch (error: any) {
+      console.error('❌ Erro ao atualizar trava:', error);
+      alert('Erro ao atualizar trava: ' + error.message);
     }
+    console.log('===================');
   };
 
   const sensors = useSensors(

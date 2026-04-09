@@ -175,7 +175,7 @@ export const supabaseService = {
     if (error) throw error;
   },
 
-  async updateClienteTrava(clienteId: string, trava: boolean) {
+  async updateClienteTrava(clienteId: string, trava: 'true' | 'false') {
     const { error } = await supabase
       .from('Clientes')
       .update({ trava })
