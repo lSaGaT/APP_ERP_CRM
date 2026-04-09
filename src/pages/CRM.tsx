@@ -179,22 +179,25 @@ export default function CRM() {
 
   // Filtrar clientes do dia (baseado em ultima_msg)
   const clientesDoDia = useMemo(() => {
+    // Comparar usando UTC para evitar problemas de timezone
     const hoje = new Date();
-    // Pegar ano, mês e dia local
-    const hojeAno = hoje.getFullYear();
-    const hojeMes = hoje.getMonth();
-    const hojeDia = hoje.getDate();
+    const hojeUTC = new Date(Date.UTC(
+      hoje.getUTCFullYear(),
+      hoje.getUTCMonth(),
+      hoje.getUTCDate()
+    ));
 
     return clientes.filter(c => {
       if (!c.ultima_msg) return false;
 
       const dataMsg = new Date(c.ultima_msg);
-      // Comparar ano, mês e dia (convertido de UTC para local automaticamente pelo Date)
-      return (
-        dataMsg.getFullYear() === hojeAno &&
-        dataMsg.getMonth() === hojeMes &&
-        dataMsg.getDate() === hojeDia
-      );
+      const msgUTC = new Date(Date.UTC(
+        dataMsg.getUTCFullYear(),
+        dataMsg.getUTCMonth(),
+        dataMsg.getUTCDate()
+      ));
+
+      return msgUTC.getTime() === hojeUTC.getTime();
     });
   }, [clientes]);
 
