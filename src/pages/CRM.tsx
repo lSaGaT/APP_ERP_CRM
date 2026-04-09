@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   DndContext, 
   closestCenter, 
@@ -37,9 +37,9 @@ import { cn } from '../lib/utils';
 
 const COLUMNS = [
   { id: 'status_novo', label: 'Novos Leads', color: 'bg-blue-500' },
-  { id: 'status_em_atendimento', label: 'Em Atendimento', color: 'bg-amber-500' },
-  { id: 'status_concluido', label: 'Concluídos', color: 'bg-emerald-500' },
-  { id: 'status_perdido', label: 'Perdidos', color: 'bg-rose-500' },
+  { id: 'status_atendimento', label: 'Em Atendimento', color: 'bg-amber-500' },
+  { id: 'status_marcado', label: 'Agendamento Marcado', color: 'bg-emerald-500' },
+  { id: 'status_duvida', label: 'Em Dúvida', color: 'bg-rose-500' },
 ];
 
 const KanbanCard: React.FC<{
@@ -177,6 +177,21 @@ export default function CRM() {
     fetchClientes();
   }, []);
 
+  // Filtrar clientes do dia (baseado em ultima_msg)
+  const clientesDoDia = useMemo(() => {
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+
+    return clientes.filter(c => {
+      if (!c.ultima_msg) return false;
+
+      const dataMsg = new Date(c.ultima_msg);
+      dataMsg.setHours(0, 0, 0, 0);
+
+      return dataMsg.getTime() === hoje.getTime();
+    });
+  }, [clientes]);
+
   const handleToggleTrava = async (clienteId: string, newTrava: boolean) => {
     try {
       await supabaseService.updateClienteTrava(clienteId, newTrava);
@@ -205,12 +220,12 @@ export default function CRM() {
 
   const handleDragEnd = async (event: any) => {
     const { active, over } = event;
-    
+
     if (over) {
-      const activeCliente = clientes.find(c => c.Cliente_id === active.id);
+      const activeCliente = clientesDoDia.find(c => c.Cliente_id === active.id);
       const overColumn = COLUMNS.find(col => col.id === over.id);
-      const overCliente = clientes.find(c => c.Cliente_id === over.id);
-      
+      const overCliente = clientesDoDia.find(c => c.Cliente_id === over.id);
+
       let newStatus = activeCliente?.status;
 
       // If dropped over a column header or empty space in column
@@ -223,7 +238,7 @@ export default function CRM() {
       if (activeCliente && newStatus && activeCliente.status !== newStatus) {
         try {
           await supabaseService.updateClienteStatus(activeCliente.Cliente_id, newStatus);
-          setClientes(prev => prev.map(c => 
+          setClientes(prev => prev.map(c =>
             c.Cliente_id === activeCliente.Cliente_id ? { ...c, status: newStatus as any } : c
           ));
         } catch (error) {
@@ -234,7 +249,7 @@ export default function CRM() {
     setActiveId(null);
   };
 
-  const activeCliente = activeId ? clientes.find(c => c.Cliente_id === activeId) : null;
+  const activeCliente = activeId ? clientesDoDia.find(c => c.Cliente_id === activeId) : null;
 
   if (loading) {
     return (
@@ -282,7 +297,7 @@ export default function CRM() {
                     <div className={cn("w-2 h-2 rounded-full", col.color)} />
                     <h3 className="font-bold text-slate-700 text-sm uppercase tracking-wider">{col.label}</h3>
                     <span className="bg-white px-2 py-0.5 rounded-md text-[10px] font-bold text-slate-400 border border-slate-200">
-                      {clientes.filter(c => c.status === col.id).length}
+                      {clientesDoDia.filter(c => c.status === col.id).length}
                     </span>
                   </div>
                   <button className="p-1 hover:bg-white rounded-lg text-slate-400 transition-colors">
@@ -292,10 +307,10 @@ export default function CRM() {
 
                 <div className="flex-1 space-y-4 overflow-y-auto pr-1 custom-scrollbar">
                   <SortableContext
-                    items={clientes.filter(c => c.status === col.id).map(c => c.Cliente_id)}
+                    items={clientesDoDia.filter(c => c.status === col.id).map(c => c.Cliente_id)}
                     strategy={verticalListSortingStrategy}
                   >
-                    {clientes
+                    {clientesDoDia
                       .filter(c => c.status === col.id)
                       .map((cliente) => (
                         <KanbanCard

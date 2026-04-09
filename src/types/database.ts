@@ -21,7 +21,7 @@ export interface Cliente {
   Estado: string | null;
   CEP: string | null;
   created_at: string;
-  status: 'status_novo' | 'status_em_atendimento' | 'status_concluido' | 'status_perdido';
+  status: 'status_novo' | 'status_atendimento' | 'status_marcado' | 'status_duvida';
   followUp: 'followUp_0' | 'followUp_1' | 'followUp_2';
   ultima_msg: string | null;
   trava: boolean;
