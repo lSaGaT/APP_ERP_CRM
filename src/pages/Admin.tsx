@@ -20,7 +20,7 @@ import {
   CalendarX
 } from 'lucide-react';
 import { supabaseService } from '../services/supabaseService';
-import { Profile, Servico, Funcionario, BloqueioAgenda } from '../types/database';
+import { Profile, Servico, Funcionario, BloqueioAgenda, JornadaTrabalho } from '../types/database';
 import { cn, formatCurrency } from '../lib/utils';
 
 const TabButton = ({ active, onClick, icon: Icon, label }: any) => (
@@ -121,6 +121,7 @@ export default function Admin() {
   const [servicos, setServicos] = useState<Servico[]>([]);
   const [funcionarios, setFuncionarios] = useState<Funcionario[]>([]);
   const [bloqueios, setBloqueios] = useState<any[]>([]);
+  const [jornadas, setJornadas] = useState<JornadaTrabalho[]>([]);
 
   // Estados de loading individuais por aba
   const [loadingUsuarios, setLoadingUsuarios] = useState(false);
@@ -158,6 +159,9 @@ export default function Admin() {
     tempoFinalizacao: ''
   });
   const [funcionarioForm, setFuncionarioForm] = useState({ nome: '', especialidade: '', cor: '#3b82f6', aceitaEncaixe: true });
+  const [jornadaConfig, setJornadaConfig] = useState<{ dia_semana: number; ativo: boolean; hora_inicio: string; hora_fim: string }[]>(
+    [0, 1, 2, 3, 4, 5, 6].map(dia => ({ dia_semana: dia, ativo: false, hora_inicio: '08:00', hora_fim: '18:00' }))
+  );
   const [bloqueioForm, setBloqueioForm] = useState({
     funcionarioId: '',
     dataInicio: '',
@@ -183,8 +187,10 @@ export default function Admin() {
           await loadServicos();
           break;
         case 'funcionarios':
-        case 'jornada':
           await loadFuncionarios();
+          break;
+        case 'jornada':
+          await Promise.all([loadFuncionarios(), loadJornadas()]);
           break;
         case 'bloqueios':
           await Promise.all([loadFuncionarios(), loadBloqueios()]);
@@ -243,6 +249,34 @@ export default function Admin() {
       console.error('Erro ao carregar bloqueios:', error);
     } finally {
       setLoadingBloqueios(false);
+    }
+  };
+
+  const loadJornadas = async () => {
+    setLoadingJornada(true);
+    try {
+      const data = await supabaseService.getJornadas();
+      setJornadas(data || []);
+    } catch (error) {
+      console.error('Erro ao carregar jornadas:', error);
+    } finally {
+      setLoadingJornada(false);
+    }
+  };
+
+  const loadJornadaByFuncionarioId = async (funcionarioId: string) => {
+    try {
+      const data = await supabaseService.getJornadaByFuncionarioId(funcionarioId);
+      // Inicializa jornadaConfig com os dados do banco
+      const config = [0, 1, 2, 3, 4, 5, 6].map(dia => {
+        const found = data.find(j => j.dia_semana === dia);
+        return found
+          ? { dia_semana: dia, ativo: true, hora_inicio: found.hora_inicio, hora_fim: found.hora_fim }
+          : { dia_semana: dia, ativo: false, hora_inicio: '08:00', hora_fim: '18:00' };
+      });
+      setJornadaConfig(config);
+    } catch (error) {
+      console.error('Erro ao carregar jornada do funcionário:', error);
     }
   };
 
@@ -361,24 +395,37 @@ export default function Admin() {
   const handleCreateFuncionario = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      let funcionarioId: string;
+
       if (editingFuncionario) {
+        funcionarioId = editingFuncionario.id;
         await supabaseService.updateFuncionario(
-          editingFuncionario.id,
+          funcionarioId,
           funcionarioForm.nome,
           funcionarioForm.especialidade,
           funcionarioForm.cor,
           true
         );
       } else {
-        await supabaseService.createFuncionario(
+        const novoFuncionario = await supabaseService.createFuncionario(
           funcionarioForm.nome,
           funcionarioForm.especialidade,
           funcionarioForm.cor,
           funcionarioForm.aceitaEncaixe
         );
+        funcionarioId = novoFuncionario.id;
       }
+
+      // Salva a jornada de trabalho
+      const jornadaToSave = jornadaConfig
+        .filter(j => j.ativo)
+        .map(j => ({ dia_semana: j.dia_semana, hora_inicio: j.hora_inicio, hora_fim: j.hora_fim }));
+
+      await supabaseService.saveJornada(funcionarioId, jornadaToSave);
+
       setShowFuncionarioModal(false);
       setFuncionarioForm({ nome: '', especialidade: '', cor: '#3b82f6', aceitaEncaixe: true });
+      setJornadaConfig([0, 1, 2, 3, 4, 5, 6].map(dia => ({ dia_semana: dia, ativo: false, hora_inicio: '08:00', hora_fim: '18:00' })));
       setEditingFuncionario(null);
       refreshData('funcionarios');
     } catch (error: any) {
@@ -449,9 +496,11 @@ export default function Admin() {
     setShowServicoModal(true);
   };
 
-  const openEditFuncionario = (func: Funcionario) => {
+  const openEditFuncionario = async (func: Funcionario) => {
     setEditingFuncionario(func);
     setFuncionarioForm({ nome: func.nome, especialidade: func.especialidade || '', cor: func.cor_agenda, aceitaEncaixe: func.aceita_encaixe });
+    // Carrega a jornada do funcionário
+    await loadJornadaByFuncionarioId(func.id);
     setShowFuncionarioModal(true);
   };
 
@@ -657,14 +706,22 @@ export default function Admin() {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    {DIAS_SEMANA.map(dia => (
-                      <div key={dia.value} className="flex items-center justify-between text-sm">
-                        <span className="text-slate-600">{dia.label}</span>
-                        <span className="text-slate-400">09:00 - 18:00</span>
-                      </div>
-                    ))}
+                    {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((dia, idx) => {
+                      const jornada = jornadas.find(j => j.funcionario_id === func.id && j.dia_semana === idx);
+                      return (
+                        <div key={idx} className="flex items-center justify-between text-sm">
+                          <span className={jornada ? 'text-slate-600' : 'text-slate-300'}>{dia}</span>
+                          <span className={jornada ? 'text-slate-700 font-medium' : 'text-slate-300 italic'}>
+                            {jornada ? `${jornada.hora_inicio} - ${jornada.hora_fim}` : 'Folga'}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
-                  <button className="w-full mt-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-100 transition-colors">
+                  <button
+                    onClick={() => openEditFuncionario(func)}
+                    className="w-full mt-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-100 transition-colors"
+                  >
                     Editar Jornada
                   </button>
                 </div>
@@ -952,6 +1009,57 @@ export default function Admin() {
             />
             <label htmlFor="aceitaEncaixe" className="text-sm font-medium text-slate-700">Aceita encaixes</label>
           </div>
+
+          {/* Configuração de Jornada */}
+          <div className="border-t border-slate-200 pt-4">
+            <h3 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2">
+              <Clock size={16} />
+              Jornada de Trabalho
+            </h3>
+            <div className="space-y-2">
+              {['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'].map((dia, idx) => (
+                <div key={idx} className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg">
+                  <input
+                    type="checkbox"
+                    checked={jornadaConfig[idx]?.ativo || false}
+                    onChange={(e: any) => {
+                      const newConfig = [...jornadaConfig];
+                      newConfig[idx] = { ...newConfig[idx], ativo: e.target.checked };
+                      setJornadaConfig(newConfig);
+                    }}
+                    className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="w-24 text-sm font-medium text-slate-700">{dia}</span>
+                  {jornadaConfig[idx]?.ativo && (
+                    <>
+                      <input
+                        type="time"
+                        value={jornadaConfig[idx]?.hora_inicio || '08:00'}
+                        onChange={(e: any) => {
+                          const newConfig = [...jornadaConfig];
+                          newConfig[idx] = { ...newConfig[idx], hora_inicio: e.target.value };
+                          setJornadaConfig(newConfig);
+                        }}
+                        className="flex-1 px-2 py-1 text-sm border border-slate-300 rounded-lg"
+                      />
+                      <span className="text-slate-400">às</span>
+                      <input
+                        type="time"
+                        value={jornadaConfig[idx]?.hora_fim || '18:00'}
+                        onChange={(e: any) => {
+                          const newConfig = [...jornadaConfig];
+                          newConfig[idx] = { ...newConfig[idx], hora_fim: e.target.value };
+                          setJornadaConfig(newConfig);
+                        }}
+                        className="flex-1 px-2 py-1 text-sm border border-slate-300 rounded-lg"
+                      />
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
           <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-200 transition-all">
             {editingFuncionario ? 'Salvar Alterações' : 'Adicionar Funcionário'}
           </button>

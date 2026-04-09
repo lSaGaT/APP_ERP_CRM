@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { fetchWithTimeout } from '../lib/supabaseHelper';
-import { Agendamento, Cliente, Funcionario, Servico, Profile, BloqueioAgenda } from '../types/database';
+import { Agendamento, Cliente, Funcionario, Servico, Profile, BloqueioAgenda, JornadaTrabalho } from '../types/database';
 
 // Timeout padrão para queries (10 segundos)
 const QUERY_TIMEOUT = 10000;
@@ -263,6 +263,51 @@ export const supabaseService = {
   async deleteFuncionario(id: string) {
     const { error } = await supabase.from('funcionarios').delete().eq('id', id);
     if (error) throw error;
+  },
+
+  // Jornada de Trabalho
+  async getJornadaByFuncionarioId(funcionarioId: string): Promise<JornadaTrabalho[]> {
+    return safeQuery(
+      () => supabase
+        .from('jornada_trabalho')
+        .select('*')
+        .eq('funcionario_id', funcionarioId)
+        .order('dia_semana', { ascending: true }),
+      []
+    );
+  },
+
+  async getJornadas(): Promise<JornadaTrabalho[]> {
+    return safeQuery(
+      () => supabase
+        .from('jornada_trabalho')
+        .select('*, funcionarios (nome, cor_agenda)'),
+      []
+    );
+  },
+
+  async saveJornada(funcionarioId: string, jornada: { dia_semana: number; hora_inicio: string; hora_fim: string }[]) {
+    // Deleta todas as jornadas existentes do funcionário
+    const { error: deleteError } = await supabase
+      .from('jornada_trabalho')
+      .delete()
+      .eq('funcionario_id', funcionarioId);
+    if (deleteError) throw deleteError;
+
+    // Insere as novas jornadas
+    if (jornada.length > 0) {
+      const { error: insertError } = await supabase
+        .from('jornada_trabalho')
+        .insert(
+          jornada.map(j => ({
+            funcionario_id: funcionarioId,
+            dia_semana: j.dia_semana,
+            hora_inicio: j.hora_inicio,
+            hora_fim: j.hora_fim,
+          }))
+        );
+      if (insertError) throw insertError;
+    }
   },
 
   async createBloqueio(
