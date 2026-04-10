@@ -49,6 +49,23 @@ export default function Conversas() {
   const menuRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Filtrar conversas
+  const filteredSessions = useMemo(() => {
+    if (!searchTerm) return sessions;
+
+    return sessions.filter(session => {
+      const nome = session.cliente?.Nome?.toLowerCase() || '';
+      const telefone = session.session_id;
+      const term = searchTerm.toLowerCase();
+
+      return nome.includes(term) || telefone.includes(term);
+    });
+  }, [sessions, searchTerm]);
+
+  const selectedSessionData = selectedSession
+    ? sessions.find(s => s.session_id === selectedSession)
+    : null;
+
   // Carregar conversas
   useEffect(() => {
     loadConversas();
@@ -239,23 +256,6 @@ export default function Conversas() {
       setLoading(false);
     }
   };
-
-  // Filtrar conversas
-  const filteredSessions = useMemo(() => {
-    if (!searchTerm) return sessions;
-
-    return sessions.filter(session => {
-      const nome = session.cliente?.Nome?.toLowerCase() || '';
-      const telefone = session.session_id;
-      const term = searchTerm.toLowerCase();
-
-      return nome.includes(term) || telefone.includes(term);
-    });
-  }, [sessions, searchTerm]);
-
-  const selectedSessionData = selectedSession
-    ? sessions.find(s => s.session_id === selectedSession)
-    : null;
 
   if (loading) {
     return (
