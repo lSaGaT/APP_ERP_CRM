@@ -191,40 +191,27 @@ export default function CRM() {
 
   // Filtrar clientes do dia (baseado em ultima_msg)
   const clientesDoDia = useMemo(() => {
-    // Comparar usando UTC para evitar problemas de timezone
+    // Comparar usando a parte da data (ignorando timezone)
     const hoje = new Date();
-    const hojeUTC = new Date(Date.UTC(
-      hoje.getUTCFullYear(),
-      hoje.getUTCMonth(),
-      hoje.getUTCDate()
+    const hojeNormalizado = new Date(Date.UTC(
+      hoje.getFullYear(),
+      hoje.getMonth(),
+      hoje.getDate()
     ));
 
-    console.log('=== DEBUG KANBAN ===');
-    console.log('Data hoje (UTC):', hojeUTC.toISOString());
-    console.log('Total clientes:', clientes.length);
-
-    const filtrados = clientes.filter(c => {
+    return clientes.filter(c => {
       if (!c.ultima_msg) return false;
 
       const dataMsg = new Date(c.ultima_msg);
-      const msgUTC = new Date(Date.UTC(
+      // Usar getUTC... porque o ultima_msg está em UTC no banco
+      const msgNormalizado = new Date(Date.UTC(
         dataMsg.getUTCFullYear(),
         dataMsg.getUTCMonth(),
         dataMsg.getUTCDate()
       ));
 
-      const isDoDia = msgUTC.getTime() === hojeUTC.getTime();
-      if (isDoDia) {
-        console.log(`✅ ${c.Nome} - ultima_msg: ${c.ultima_msg}`);
-      }
-
-      return isDoDia;
+      return msgNormalizado.getTime() === hojeNormalizado.getTime();
     });
-
-    console.log('Clientes do dia:', filtrados.length);
-    console.log('====================');
-
-    return filtrados;
   }, [clientes]);
 
   const handleToggleTrava = async (clienteId: string, newTrava: 'true' | 'false') => {
