@@ -1,3 +1,5 @@
+import { supabase } from '../lib/supabase';
+
 // Configurações da MEGA API
 const MEGA_API_URL = 'https://apinocode01.megaapi.com.br/rest/sendMessage/megacode-MklLzdcnE3X/text';
 const MEGA_API_TOKEN = 'MklLzdcnE3X';
@@ -9,7 +11,7 @@ interface SendMessageResponse {
 }
 
 /**
- * Envia mensagem WhatsApp via MEGA API
+ * Envia mensagem WhatsApp via MEGA API e salva no Supabase
  * @param phoneNumber - Número do telefone (pode incluir ou não formatação)
  * @param message - Texto da mensagem a ser enviada
  * @returns Promise com a resposta da API
@@ -31,6 +33,7 @@ export async function sendWhatsAppMessage(
     console.log('Enviando mensagem para:', formattedPhone);
     console.log('Mensagem:', message);
 
+    // 1. Enviar via MEGA API
     const response = await fetch(MEGA_API_URL, {
       method: 'POST',
       headers: {
@@ -47,6 +50,27 @@ export async function sendWhatsAppMessage(
 
     if (!response.ok) {
       throw new Error(data.message || 'Erro ao enviar mensagem');
+    }
+
+    // 2. Salvar no Supabase (n8n_chat_histories)
+    const { error: dbError } = await supabase
+      .from('n8n_chat_histories')
+      .insert({
+        session_id: cleanPhone,
+        message: {
+          type: 'agent',
+          content: message,
+          additional_kwargs: {},
+          response_metadata: {}
+        },
+        created_at: new Date().toISOString()
+      });
+
+    if (dbError) {
+      console.error('Aviso: Mensagem enviada mas não salvou no histórico:', dbError);
+      // Não lançar erro - a mensagem já foi enviada
+    } else {
+      console.log('✅ Mensagem salva no histórico do Supabase');
     }
 
     return {
