@@ -199,7 +199,11 @@ export default function CRM() {
       hoje.getUTCDate()
     ));
 
-    return clientes.filter(c => {
+    console.log('=== DEBUG KANBAN ===');
+    console.log('Data hoje (UTC):', hojeUTC.toISOString());
+    console.log('Total clientes:', clientes.length);
+
+    const filtrados = clientes.filter(c => {
       if (!c.ultima_msg) return false;
 
       const dataMsg = new Date(c.ultima_msg);
@@ -209,8 +213,18 @@ export default function CRM() {
         dataMsg.getUTCDate()
       ));
 
-      return msgUTC.getTime() === hojeUTC.getTime();
+      const isDoDia = msgUTC.getTime() === hojeUTC.getTime();
+      if (isDoDia) {
+        console.log(`✅ ${c.Nome} - ultima_msg: ${c.ultima_msg}`);
+      }
+
+      return isDoDia;
     });
+
+    console.log('Clientes do dia:', filtrados.length);
+    console.log('====================');
+
+    return filtrados;
   }, [clientes]);
 
   const handleToggleTrava = async (clienteId: string, newTrava: 'true' | 'false') => {
