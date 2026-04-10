@@ -11,14 +11,14 @@
 import React, { useState, createContext, useContext, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  LayoutDashboard, 
-  Calendar, 
-  DollarSign, 
-  Users, 
-  Settings, 
-  LogOut, 
-  Menu, 
+import {
+  LayoutDashboard,
+  Calendar,
+  DollarSign,
+  Users,
+  Settings,
+  LogOut,
+  Menu,
   X,
   UserCircle,
   ChevronRight,
@@ -26,7 +26,8 @@ import {
   Clock,
   CheckCircle2,
   AlertCircle,
-  Kanban
+  Kanban,
+  MessageSquare
 } from 'lucide-react';
 import { Profile, UserRole } from './types/database';
 import { cn } from './lib/utils';
@@ -37,6 +38,7 @@ import Dashboard from './pages/Dashboard';
 import Agenda from './pages/Agenda';
 import Financeiro from './pages/Financeiro';
 import CRM from './pages/CRM';
+import Conversas from './pages/Conversas';
 import Admin from './pages/Admin';
 import Login from './pages/Login';
 
@@ -159,6 +161,7 @@ const MainLayout = ({ children }: { children: React.ReactNode }) => {
     { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['admin', 'atendente'] },
     { to: '/agenda', icon: Calendar, label: 'Agenda', roles: ['admin', 'atendente'] },
     { to: '/crm', icon: Kanban, label: 'CRM Kanban', roles: ['admin', 'atendente'] },
+    { to: '/conversas', icon: MessageSquare, label: 'Conversas IA', roles: ['admin', 'atendente'] },
     { to: '/financeiro', icon: DollarSign, label: 'Financeiro', roles: ['admin'] },
     { to: '/admin', icon: Settings, label: 'Configurações', roles: ['admin'] },
   ];
@@ -285,6 +288,7 @@ export default function App() {
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
           <Route path="/agenda" element={<ProtectedRoute><Agenda /></ProtectedRoute>} />
           <Route path="/crm" element={<ProtectedRoute><CRM /></ProtectedRoute>} />
+          <Route path="/conversas" element={<ProtectedRoute><Conversas /></ProtectedRoute>} />
           <Route path="/financeiro" element={<ProtectedRoute roles={['admin']}><Financeiro /></ProtectedRoute>} />
           <Route path="/admin" element={<ProtectedRoute roles={['admin']}><Admin /></ProtectedRoute>} />
           <Route path="/" element={<Navigate to="/dashboard" />} />
