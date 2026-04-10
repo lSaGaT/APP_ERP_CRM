@@ -270,9 +270,9 @@ export default function Conversas() {
   }
 
   return (
-    <div className="space-y-6 h-full flex flex-col">
+    <div className="h-[calc(100vh-8rem)] flex flex-col gap-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-shrink-0">
         <div className="flex flex-col gap-1">
           <h2 className="text-3xl font-bold text-slate-900 tracking-tight">Conversas IA</h2>
           <p className="text-slate-500">Histórico de conversas com o agente de IA</p>
@@ -280,11 +280,11 @@ export default function Conversas() {
       </div>
 
       {/* Container Principal */}
-      <div className="flex-1 flex bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+      <div className="flex-1 flex bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm min-h-0">
         {/* Sidebar - Lista de Conversas */}
-        <div className="w-80 border-r border-slate-200 flex flex-col">
+        <div className="w-80 border-r border-slate-200 flex flex-col min-h-0">
           {/* Busca */}
-          <div className="p-4 border-b border-slate-200">
+          <div className="p-4 border-b border-slate-200 flex-shrink-0">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
               <input
@@ -298,7 +298,7 @@ export default function Conversas() {
           </div>
 
           {/* Lista de Conversas */}
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto overflow-x-hidden">
             {filteredSessions.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-slate-400 p-6 text-center">
                 <Phone size={48} strokeWidth={1} />
@@ -352,7 +352,7 @@ export default function Conversas() {
         </div>
 
         {/* Chat Area */}
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col min-h-0">
           {!selectedSessionData ? (
             <div className="flex-1 flex items-center justify-center text-slate-400">
               <div className="text-center">
@@ -364,7 +364,7 @@ export default function Conversas() {
           ) : (
             <>
               {/* Chat Header */}
-              <div className="p-4 border-b border-slate-200 bg-white">
+              <div className="p-4 border-b border-slate-200 bg-white flex-shrink-0">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold">
@@ -439,7 +439,7 @@ export default function Conversas() {
               </div>
 
               {/* Messages Area */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50">
+              <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-4 bg-slate-50 min-h-0">
                 {selectedSessionData.messages.map((msg, idx) => (
                   <motion.div
                     key={msg.id || idx}
@@ -481,7 +481,7 @@ export default function Conversas() {
               </div>
 
               {/* Input Area */}
-              <div className="p-4 border-t border-slate-200 bg-white">
+              <div className="p-4 border-t border-slate-200 bg-white flex-shrink-0">
                 <div className="flex items-center gap-3">
                   <input
                     type="text"
